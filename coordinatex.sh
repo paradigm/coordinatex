@@ -87,8 +87,8 @@ OUTFILE=""
 EDITOR=""
 READER=""
 VIMSERVER=""
-while getopts ":hi:o:e:v:" o; do
-	case "$o" in
+while getopts ":hi:o:e:v:" OPT; do
+	case "$OPT" in
 		h | [?] ) print_help ;;
 		i) INFILE="$OPTARG" ;;
 		o) OUTFILE="$OPTARG" ;;
@@ -135,8 +135,8 @@ if [ -z "$EDITOR" ]; then
 fi
 SUPPORTEDEDITORS="vim"
 OKAYEDITOR=""
-for var in $SUPPORTEDEDITORS; do
-	if [ "$var" = "$EDITOR" ]; then
+for VAR in $SUPPORTEDEDITORS; do
+	if [ "$VAR" = "$EDITOR" ]; then
 		OKAYEDITOR=1
 	fi
 done
@@ -146,7 +146,24 @@ if [ -z $OKAYEDITOR ]; then
 	echo "Currently supported editors are: $SUPPORTEDEDITORS"
 	exit
 fi
-
+if  [ -z "$VIMSERVER" ] && [ "$EDITOR" = "vim" ]; then
+	echo "ERROR: When using vim, must provide a vimserver name."
+	echo "See vim's \":help clientserver\""
+	exit
+fi
+SUPPORTEDREADERS="xdvi"
+OKAYREADER=""
+for VAR in $SUPPORTEDEDITORS; do
+	if [ "$VAR" = "$READER" ]; then
+		OKAYEDITOR=1
+	fi
+done
+if [ -z $OKAYREADER ]; then
+	echo "ERROR: The reader '$READER' is not currently supported."
+	echo "Please select another reader with the -r option"
+	echo "Currently supported readers are: $SUPPORTEDREADERS"
+	exit
+fi
 if  [ -z "$VIMSERVER" ] && [ "$EDITOR" = "vim" ]; then
 	echo "ERROR: When using vim, must provide a vimserver name."
 	echo "See vim's \":help clientserver\""
@@ -155,7 +172,7 @@ fi
 
 #case "$EDITOR-$READER" in
 #	vim-xdvi )
-#		READERLINE='xdvi --servername "$VIMSERVER --remote +%l +%f" -sourceposition "$CURSORPOS $FILENAME" "$OUTNAME"'
+#		READERLINE='xdvi --servername "$VIMSERVER --remote +%l +%f" -sourceposition "$CURSORPOS $INFILE" "$OUTFILE"'
 #		;;
 #	* )
 #		echo "Missing needed information, aborting"
