@@ -1,5 +1,4 @@
 #!/bin/sh
-echo $$
 FILENAME=$1
 if [ -e .autotexlock ]; then
 	rm .autotexlock
