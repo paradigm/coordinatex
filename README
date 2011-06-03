@@ -63,3 +63,7 @@ To do:
    - Make a config?
      - ./.coordinatex
      - ~/.coordinatex
+ - Recommended editor settings
+   - vim
+     - binding to start/stop coordinatex updating
+   - other editors
