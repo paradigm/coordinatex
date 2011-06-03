@@ -67,3 +67,4 @@ To do:
    - vim
      - binding to start/stop coordinatex updating
    - other editors
+ - Properly handle the lack of editor or filename.tex
