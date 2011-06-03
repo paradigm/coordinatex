@@ -29,54 +29,117 @@
 
 # CoordinaTeX is a script which will automate compilation of a TeX file and
 # forward searches (ie, having the output reader jump to the editor's cursor
-# position).  The effect should be to get a seomwhat-live update of the TeX
+# position).  The effect should be to get a somewhat-live update of the TeX
 # document as it is being created without having to manually make any requests
 # for compilation or forward search syncing - just type your document and watch
 # the reader update live and follow your cursor.
 
+VERSION="0.2"
 
 #  Functions
 # ==============================================================================
 
-# Quit CoordinaTeX cleanly, killing backgrounded functions
-coordquit() {
-	echo -n "Killing background functions"
-	for PID in $1; do
-		if kill $PID; then
-			echo -n "."
-		else
-			echo "\nCouldn't kill background function, something could be wrong\n"
-		fi
-	done
-#	if kill $COORDSEARCHPID; then
-#		echo "Successfully killed sync loop"
-#	else
-#		echo "Couldn't kill sync loop, could be a problem."
-#	fi
-#	if kill $COORDCOMPILEPID; then
-#		echo "Successfully killed compilation loop"
-#	else
-#		echo "Couldn't kill compilation loop, could be a problem."
-#	fi
-#	exit
-}
+
+# Print help information and exit
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
 print_help() {
-	echo "CoordinaTeX 0.1\n"
-	echo "usage: coordinatex [arguments]\n"
+	echo "CoordinaTeX $VERSION"
+	echo ""
+	echo "usage: coordinatex [arguments]"
+	echo ""
 	echo "Arguments"
 	echo "  -h              Print this dialogue"
 	echo "  -i <filename>   TeX file to be edited and compiled"
 	echo "  -o <filename>   Output file name"
-	echo "  -e <editor>     Editor to forward search"
+	echo "  -e <editor>     Program to edit TeX file"
+	echo "  -r <reader>     Program to view compiled DVI or PDF"
 	echo "  -v <vimserver>  Vim's servername"
+	echo "  -c <compiler>   Name of compiler to use - pdftex, latex, etc"
+	echo "  -n <seconds>    Time to wait between checking for need to compile"
+	echo "  -p <seconds>    Time to wait between polling for editor cursor"
+	echo ""
+	echo "If a required argument is left out, CoordinaTeX may pick it up from an"
+	echo "environmental variable (such as EDITOR) or try to guess the value by"
+	echo "looking at the local files and processes."
 	exit
 }
+
+
+#  Quit CoordinaTeX cleanly, killing backgrounded functions
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+quit() {
+	echo "Killing background functions..."
+	if kill $COMPILEPID; then
+		echo "Successfully stopped autocompiling loop"
+	else
+		echo "Expected to be able to kill autocompiling loop, but couldn't."
+		echo "Something could be wrong."
+	fi
+	if kill $SEARCHPID; then
+		echo "Successfully stopped forwardsearch loop"
+	else
+		echo "Expected to be able to kill autocompiling loop, but couldn't."
+		echo "Something could be wrong."
+	fi
+	echo "Successfully closed all background loops, quitting"
+	exit
+}
+
+
+#  Automatically compile INFILE whenever it changes
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+autocompile() {
+	# Ensure variables have been set
+	if [ -z "$COMPILECMD" ] || [ -z "$COMPILEPERIOD" ] || [ -z "$RELOADREADER" ]; then
+		echo "ERROR: autocompile() doesn't see all the needed variables, something is wrong.  Aborting."
+		exit 1
+	fi
+
+	# While INFILE is available, keep checking if need to compile
+	OLDMD5=""
+	while [ -f "$INFILE" ]; do
+		# check to see if file changed
+		MD5=$(md5sum "$INFILE")
+		if [ "$MD5" != "$OLDMD5" ]; then
+			if eval $COMPILECMD; then
+				eval $RELOADREADER
+			fi
+			OLDMD5=$MD5
+		fi
+		sleep $COMPILEPERIOD
+	done
+}
+
+#  Automatically poll for EDITOR cursor position and pass to READER
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+forwardsearch() {
+	# Ensure variables have been set
+	if [ -z "$POLLEDITOR" ] || [ -z "$CALLREADER" ] || [ -z "$POLLPERIOD" ]; then
+		echo "ERROR: forwardsearch() doesn't see all the needed variables, something is wrong.  Aborting."
+		exit 1
+	fi
+
+	# Keep polling for cursor position
+	OLDCURSORPOS=""
+	while true; do
+		CURSORPOS=$(eval $POLLEDITOR)
+		if [ "$CURSORPOS" != "$OLDCURSORPOS" ]; then
+			eval $CALLREADER
+			OLDCURSORPOS=$CURSORPOS
+		fi
+		sleep $POLLPERIOD
+	done
+}
+
 
 #  Main execution starts here
 # ==============================================================================
 
-echo "Starting CoordinaTeX"
+echo "Starting CoordinaTeX $VERSION"
 
 
 #  Parse arguments
@@ -87,7 +150,7 @@ OUTFILE=""
 EDITOR=""
 READER=""
 VIMSERVER=""
-while getopts ":hi:o:e:v:" OPT; do
+while getopts ":hi:o:e:v:r:" OPT; do
 	case "$OPT" in
 		h | [?] ) print_help ;;
 		i) INFILE="$OPTARG" ;;
@@ -95,12 +158,18 @@ while getopts ":hi:o:e:v:" OPT; do
 		e) EDITOR="$OPTARG" ;;
 		r) READER="$OPTARG" ;;
 		v) VIMSERVER="$OPTARG" ;;
+		c) TEXCOMPILER="$OPTARG";;
+		n) COMPILEPERIOD="$OPTARG";;
+		p) POLLPERIOD="$OPTARG";;
 	esac
 done
+
 
 #  Ensure required arguments were met, or warn about guesses
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
+#  Check for INFILE
+# .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 if [ -z "$INFILE" ]; then
 	if [ $(ls | grep ".tex$" | wc -l) -eq 1 ]; then
 		INFILE=$(ls | grep ".tex$")
@@ -114,10 +183,16 @@ if [ ! -f "$INFILE" ]; then
 	echo "ERROR: Cannot find the file '$INFILE'"
 	exit 1
 fi
+
+#  Check for OUTFILE
+# .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 if [ -z "$OUTFILE" ]; then
 	OUTFILE=$(echo $INFILE | sed 's/\(.*\).tex$/\1/')".dvi"
 	echo "WARNING: No outfile specified, guessing: $OUTFILE"
 fi
+
+#  Check for EDITOR
+# .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 if [ -z "$EDITOR" ]; then
 	if ps cx | grep vim >/dev/null; then
 		EDITOR=vim
@@ -151,11 +226,27 @@ if  [ -z "$VIMSERVER" ] && [ "$EDITOR" = "vim" ]; then
 	echo "See vim's \":help clientserver\""
 	exit 1
 fi
+
+#  Check for READER
+# .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+if [ -z "$READER" ]; then
+	if ps cx | grep xdvi >/dev/null; then
+		READER=xdvi
+	elif ps cx | grep evince >/dev/null; then
+		READER=evince
+	fi
+	if [ -z "$READER" ]; then
+		echo "ERROR: No reader specified, cannot guess, aborting"
+		exit 1
+	else
+		echo "WARNING: No reader specified, guessing: $READER"
+	fi
+fi
 SUPPORTEDREADERS="xdvi"
 OKAYREADER=""
-for VAR in $SUPPORTEDEDITORS; do
+for VAR in $SUPPORTEDREADERS; do
 	if [ "$VAR" = "$READER" ]; then
-		OKAYEDITOR=1
+		OKAYREADER=1
 	fi
 done
 if [ -z $OKAYREADER ]; then
@@ -164,24 +255,128 @@ if [ -z $OKAYREADER ]; then
 	echo "Currently supported readers are: $SUPPORTEDREADERS"
 	exit 1
 fi
-if  [ -z "$VIMSERVER" ] && [ "$EDITOR" = "vim" ]; then
-	echo "ERROR: When using vim, must provide a vimserver name."
-	echo "See vim's \":help clientserver\""
-	exit 1
+
+#  Check for TEXCOMPILER
+# .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+if [ -z "$TEXCOMPILER" ]; then
+	TEXCOMPILER="latex"
+	echo "WARNING: No TeX compiler specified, defaulting to: $TEXCOMPILER"
 fi
 
-#  Determine how to launch reader
+#  Check for COMPILEPERIOD
+# .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+if [ -z "$COMPILEPERIOD" ]; then
+	COMPILEPERIOD="1"
+	echo "WARNING: No delay between file change specified, defaulting to: $COMPILEPERIOD second(s)"
+fi
+
+#  Check for POLLPERIOD
+# .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+if [ -z "$POLLPILEPERIOD" ]; then
+	POLLPERIOD="1"
+	echo "WARNING: No delay between cursor position polling specified, defaulting to: $POLLPERIOD second(s)"
+fi
+
+#  Set needed values to be evaluated in the loops
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
-case "$EDITOR-$READER" in
-	vim-xdvi )
-		READERLINE='xdvi --servername "$VIMSERVER --remote +%l +%f" -sourceposition "$CURSORPOS $INFILE" "$OUTFILE"'
+#  Set how to poll EDITOR for cursor position
+# .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+
+case "$EDITOR" in
+	vim )
+		POLLEDITOR='vim --servername "$VIMSERVER" --remote-expr '\''line(".").":".col(".")'\'
 		;;
 	* )
 		echo "ERROR: Hmm, shouldn't get here.  Something is wrong.  Aborting."
 		exit 1
 		;;
 esac
+
+
+#  Set how to inform EDITOR of reverse search
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+case "$EDITOR" in
+	vim )
+		CALLEDITOR="vim --servername \"$VIMSERVER\" --remote +$LINE $INFILE"
+		;;
+	* )
+		echo "ERROR: Hmm, shouldn't get here.  Something is wrong.  Aborting."
+		exit 1
+		;;
+esac
+
+
+#  Set how to inform READER of forward search
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+case "$READER" in
+	xdvi )
+		CALLREADER='xdvi -editor "$CALLEDITOR"  -sourceposition "$CURSORPOS $INFILE" "$OUTFILE"'
+		;;
+	* )
+		echo "ERROR: Hmm, shouldn't get here.  Something is wrong.  Aborting."
+		exit 1
+		;;
+esac
+
+
+#  Set how to tell READER to reload document
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+case "$READER" in
+	xdvi )
+		RELOADREADER='pkill -USR1 xdvi'
+		;;
+	* )
+		echo "ERROR: Hmm, shouldn't get here.  Something is wrong.  Aborting."
+		exit 1
+		;;
+esac
+
+
+#  Set command to compile TeX document
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+case "$TEXCOMPILER" in
+	latex )
+		COMPILECMD='latex -interaction=nonstopmode "$INFILE" 1>/dev/null'
+		;;
+	* )
+		echo "ERROR: Hmm, shouldn't get here.  Something is wrong.  Aborting."
+		exit 1
+		;;
+esac
+
+#  Main looping starts here
+# ==============================================================================
+
+
+# Don't want ctrl-c to quit without cleaning up
+trap quit INT
+
+#  Start autocompile loop
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+autocompile &
+COMPILEPID=$!
+
+#  Start autocompile loop
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+forwardsearch &
+SEARCHPID=$!
+
+#  Wait for indication from user to quit
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+echo "Press ENTER to quit"
+read DUMMYVAR
+quit
+
+
+
 #export COORDCOMPILEPID="-1"
 #export COORDSEARCHPID="-1"
 #
