@@ -3,3 +3,63 @@ Coordinatex is a simple handful of bourne shell scripts to automate coordination
 Eventually I'd like to get support for both multiple editors as well as multiple DVI and PDF viewers, srcltx and synctex.
 
 This is quite an early alpha.  It kinda works for my purposes at the moment.
+
+Currently supported:
+ - Editors: Vim (with +clientserver)
+ - Output readers: xdvi
+ - Output formats: LaTeX with srcltx
+
+How to use (at the moment):
+ 1. Ensure your LaTeX document uses the srcltx package, \usepackage{srcltx}
+ 2. Open the document in Vim, with a server name, vim --servername vim filename.tex
+  2a. You can check the servername once in vim via :echo v:servername<CR>
+ 3. Run coordcompile.sh, passing it the filename.tex as an argument (the first).  The LaTeX should now be updating every time it changes.
+ 4. Run coordsearch.sh, passing it the filename.tex and vim servername (in that order).  xdvi should now pop up, and follow vim's cursor movement ("forward search").  Additionally, you should be able to click in xdvi while holding control and have vim jump to the click's location in the source ("reverse search").
+ 5. When you're done, kill both coordcompile.sh and coordsearch.sh manually - either hit ctrl-c while their terminals have focus, or play around with kill/killall/pkill
+
+To do:
+ - Make the README prettier, use restructuredtext formatting with proper headings etc
+ - Figure out how to poll for cursor position in other editors
+   - emacs
+   - gedit
+   - joe
+ - Figure out how to at least forward search page in other output readers
+   - Evince supports synctex?
+   - mupdf?
+   - xpdf?
+   - KDE's DVI/PDF reader(s)?
+     - Ocular
+     - KDVI supports srcltx?
+   - Adobe's reader?
+   - Mac-specific reader? (Preview?)
+   - BSD-specific reader?
+   - Solaris-specific reader?
+ - Windows stuff?
+   - Cygwin?
+   - Batch script?
+   - Powershell?
+ - Heavily comment source code
+ - Find a clean way to stop/close, shouldn't require SIGKILL
+ - Support handling non-main/inputted TeX files
+ - Support TeX/LaTeX/ConTeXt with all of their supported output formats
+   - PostScript?
+   - DVI, via srcltx, or other things?
+   - PDF, via synctex, or other things?
+ - Maybe auto-detect as much as possible?
+   - Find editor
+     - ps a | grep FILENAME
+   - Find main .tex file
+     - May require a comment in the handed .tex filename
+     - May grep through local files for \input{FILENAME}
+   - Find which command to use to compile
+     - If it contains \documentclass{*}, it's probably (PDF)LaTeX
+       - If it contains \usepackage{srcltx}, it's probably DVI, else PDF?
+     - If it contains \bye, it's probably (PDF)TeX
+     - Forgot what ConTeXt uses, figure that out
+   - Check environmental variables
+     - $EDITOR
+     - $PDFREADER
+   - Detect filename.tex from files in current directory
+   - Make a config?
+     - ./.coordinatex
+     - ~/.coordinatex
