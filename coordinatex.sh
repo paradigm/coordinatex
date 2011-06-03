@@ -107,12 +107,12 @@ if [ -z "$INFILE" ]; then
 		echo "WARNING: No infile specified, guessing $INFILE"
 	else
 		echo "ERROR: Must provide a TeX filename (to be edited and compiled)"
-		exit
+		exit 1
 	fi
 fi
 if [ ! -f "$INFILE" ]; then
 	echo "ERROR: Cannot find the file '$INFILE'"
-	exit
+	exit 1
 fi
 if [ -z "$OUTFILE" ]; then
 	OUTFILE=$(echo $INFILE | sed 's/\(.*\).tex$/\1/')".dvi"
@@ -128,7 +128,7 @@ if [ -z "$EDITOR" ]; then
 	fi
 	if [ -z "$EDITOR" ]; then
 		echo "ERROR: No editor specified, cannot guess, aborting"
-		exit
+		exit 1
 	else
 		echo "WARNING: No editor specified, guessing: $EDITOR"
 	fi
@@ -144,12 +144,12 @@ if [ -z $OKAYEDITOR ]; then
 	echo "ERROR: The editor '$EDITOR' is not currently supported."
 	echo "Please select another editor with the -e option"
 	echo "Currently supported editors are: $SUPPORTEDEDITORS"
-	exit
+	exit 1
 fi
 if  [ -z "$VIMSERVER" ] && [ "$EDITOR" = "vim" ]; then
 	echo "ERROR: When using vim, must provide a vimserver name."
 	echo "See vim's \":help clientserver\""
-	exit
+	exit 1
 fi
 SUPPORTEDREADERS="xdvi"
 OKAYREADER=""
@@ -162,23 +162,26 @@ if [ -z $OKAYREADER ]; then
 	echo "ERROR: The reader '$READER' is not currently supported."
 	echo "Please select another reader with the -r option"
 	echo "Currently supported readers are: $SUPPORTEDREADERS"
-	exit
+	exit 1
 fi
 if  [ -z "$VIMSERVER" ] && [ "$EDITOR" = "vim" ]; then
 	echo "ERROR: When using vim, must provide a vimserver name."
 	echo "See vim's \":help clientserver\""
-	exit
+	exit 1
 fi
 
-#case "$EDITOR-$READER" in
-#	vim-xdvi )
-#		READERLINE='xdvi --servername "$VIMSERVER --remote +%l +%f" -sourceposition "$CURSORPOS $INFILE" "$OUTFILE"'
-#		;;
-#	* )
-#		echo "Missing needed information, aborting"
-#		exit
-#		;;
-#esac
+#  Determine how to launch reader
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+case "$EDITOR-$READER" in
+	vim-xdvi )
+		READERLINE='xdvi --servername "$VIMSERVER --remote +%l +%f" -sourceposition "$CURSORPOS $INFILE" "$OUTFILE"'
+		;;
+	* )
+		echo "ERROR: Hmm, shouldn't get here.  Something is wrong.  Aborting."
+		exit 1
+		;;
+esac
 #export COORDCOMPILEPID="-1"
 #export COORDSEARCHPID="-1"
 #
