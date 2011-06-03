@@ -362,8 +362,8 @@ esac
 # ==============================================================================
 
 
-# Don't want ctrl-c to quit without cleaning up
-trap quit INT
+# Don't want to close without cleaning up
+trap quit HUP INT TERM
 
 #  Start autocompile loop
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
