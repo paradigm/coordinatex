@@ -1,0 +1,5 @@
+Coordinatex is a simple handful of bourne shell scripts to automate coordination between a TeX editor and the program which views its output.  The idea is to get something close to a live update of what the TeX document looks like while editing it.
+
+Eventually I'd like to get support for both multiple editors as well as multiple DVI and PDF viewers, srcltx and synctex.
+
+This is quite an early alpha.  It kinda works for my purposes at the moment.
