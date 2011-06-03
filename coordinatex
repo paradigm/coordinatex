@@ -282,7 +282,7 @@ fi
 #  Check for POLLPERIOD
 # .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 if [ -z "$POLLPILEPERIOD" ]; then
-	POLLPERIOD="1"
+	POLLPERIOD=".2"
 	echo "WARNING: No delay between cursor position polling specified, defaulting to: $POLLPERIOD second(s)"
 fi
 
