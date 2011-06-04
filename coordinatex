@@ -34,7 +34,7 @@
 # for compilation or forward search syncing - just type your document and watch
 # the reader update live and follow your cursor.
 
-VERSION="0.2"
+VERSION="0.2.1"
 
 #  Functions
 # ==============================================================================

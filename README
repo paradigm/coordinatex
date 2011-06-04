@@ -31,6 +31,10 @@ Eventually I'd like to add several more editors, readers and formats.
  Changelog:
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
+* Version 0.2.1:
+	- Limited vim server guess
+	- Changed default POLLPERIOD 1 -> .2
+	- Changed "Press ENTER to quit" to "Press ctrl-c to quit" to fix bug
 * Version 0.2:
 	- Cleaned up README a bit
 	- Cleanly closes
