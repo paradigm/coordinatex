@@ -31,6 +31,8 @@ Eventually I'd like to add several more editors, readers and formats.
  Changelog:
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
+* Version 0.2.2:
+	- Changed ctrl-c sleep time to fix another bug
 * Version 0.2.1:
 	- Limited vim server guess
 	- Changed default POLLPERIOD 1 -> .2

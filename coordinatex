@@ -378,5 +378,5 @@ SEARCHPID=$!
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
 echo "Press ctrl-c to quit"
-while true; do sleep 1d; done
+while true; do sleep 5s; done
 quit
