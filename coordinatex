@@ -225,9 +225,6 @@ if  [ -z "$VIMSERVER" ] && [ "$EDITOR" = "vim" ]; then
 	if [ $(vim --serverlist | wc -l) -eq 1 ]; then
 		VIMSERVER=$(vim --serverlist)
 		echo "WARNING: No vim server specified, guessing: $VIMSERVER"
-	#elif [ $(for SERVER in $(vim --serverlist); do vim --servername "$SERVER" --remote-expr "bufname('.')" ; done | grep "[.]tex$" | wc -l) -eq 1 ]; then
-		#VIMSERVER=$(for SERVER in $(vim --serverlist); do vim --servername "$SERVER" --remote-expr "bufname('.')"; echo $SERVER; done | awk 'NEXT{print$0;exit}/[.]tex$/{NEXT=1}')
-		#echo "WARNING: No vim server specified, guessing: $VIMSERVER"
 	else
 		echo "ERROR: When using vim, must provide a vimserver name."
 		echo "Could got guess the vim servername, aborting."
