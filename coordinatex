@@ -380,6 +380,6 @@ SEARCHPID=$!
 #  Wait for indication from user to quit
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
-echo "Press ENTER to quit"
-read DUMMYVAR
+echo "Press ctrl-c to quit"
+while true; do sleep 1d; done
 quit
