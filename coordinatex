@@ -227,7 +227,7 @@ if  [ -z "$VIMSERVER" ] && [ "$EDITOR" = "vim" ]; then
 		echo "WARNING: No vim server specified, guessing: $VIMSERVER"
 	else
 		echo "ERROR: When using vim, must provide a vimserver name."
-		echo "Could got guess the vim servername, aborting."
+		echo "Could not guess the vim servername, aborting."
 		echo "See vim's \":help clientserver\""
 		exit 1
 	fi
