@@ -99,19 +99,16 @@ autocompile() {
 		exit 1
 	fi
 
-	# While INFILE is available, keep checking if need to compile
-	OLDMD5=""
-	while [ -f "$INFILE" ]; do
-		# check to see if file changed
-		MD5=$(md5sum "$INFILE")
-		if [ "$MD5" != "$OLDMD5" ]; then
+	# if inotifywait is available, use that - otherwise, use md5 checking
+	if which inotifywait >/dev/null; then 
+		while [ -f "$INFILE" ]; do
 			if eval $COMPILECMD > coordinatex_compile_output; then
 				eval $RELOADREADER
 				if [ -f coordinatex_error.tex ]; then
 					rm coordinatex_error.tex 2>/dev/null
 				fi
 			else
-				if [ ! -z $READERSHOWERROR ]; then
+				if [ -z $READERSHOWERROR ]; then
 					echo '\documentclass{article}\usepackage{srcltx}\\begin{document}\\noindent' > coordinatex_error.tex
 					sed -e 's,\\,\\textbackslash ,g' -e 's,$,\\\\,g' -e 's,\(\[\|\]\|<\|>\),\$&\$,g' coordinatex_compile_output >> coordinatex_error.tex
 					echo '\n\end{document}' >> coordinatex_error.tex
@@ -123,10 +120,38 @@ autocompile() {
 					fi
 				fi
 			fi
-			OLDMD5=$MD5
-		fi
-		sleep $COMPILEPERIOD
-	done
+			inotifywait "$INFILE" 1>/dev/null
+		done
+	else
+		# While INFILE is available, keep checking if need to compile
+		OLDMD5=""
+		while [ -f "$INFILE" ]; do
+			# check to see if file changed
+			MD5=$(md5sum "$INFILE")
+			if [ "$MD5" != "$OLDMD5" ]; then
+				if eval $COMPILECMD > coordinatex_compile_output; then
+					eval $RELOADREADER
+					if [ -f coordinatex_error.tex ]; then
+						rm coordinatex_error.tex 2>/dev/null
+					fi
+				else
+					if [ -z $READERSHOWERROR ]; then
+						echo '\documentclass{article}\usepackage{srcltx}\\begin{document}\\noindent' > coordinatex_error.tex
+						sed -e 's,\\,\\textbackslash ,g' -e 's,$,\\\\,g' -e 's,\(\[\|\]\|<\|>\),\$&\$,g' coordinatex_compile_output >> coordinatex_error.tex
+						echo '\n\end{document}' >> coordinatex_error.tex
+						if eval $ERRORCMD 1>/dev/null; then
+							#cp coordinatex_error.dvi $OUTFILE
+							eval $RELOADREADER
+						else
+							echo "Error loading error ):"
+						fi
+					fi
+				fi
+				OLDMD5=$MD5
+			fi
+			sleep $COMPILEPERIOD
+		done
+	fi
 }
 
 #  Automatically poll for EDITOR cursor position and pass to READER
