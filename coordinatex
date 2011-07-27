@@ -94,14 +94,17 @@ quit() {
 
 autocompile() {
 	# Ensure variables have been set
-	if [ -z "$COMPILECMD" ] || [ -z "$COMPILEPERIOD" ] || [ -z "$RELOADREADER" ] || [ -z "$ERRORCMD" ] || [ -z "$INFILE" ] || [ -z "$OUTFILE" ]; then
+	if [ -z "$COMPILECMD" ] || [ -z "$COMPILEPERIOD" ] || [ -z "$RELOADREADER" ] || [ -z "$ERRORCMD" ] || [ -z "$INFILE" ] || [ -z "$OUTFILE" ] || [ -z "$COORDINATEXPID" ]; then
 		echo "ERROR: autocompile() doesn't see all the needed variables, something is wrong.  Aborting."
 		exit 1
 	fi
 
-	# if inotifywait is available, use that - otherwise, use md5 checking
-	if which inotifywait >/dev/null; then 
-		while [ -f "$INFILE" ]; do
+	# While INFILE is available, keep checking if need to compile
+	OLDMD5=""
+	while true; do
+		# check to see if file changed
+		MD5=$(md5sum "$INFILE")
+		if [ "$MD5" != "$OLDMD5" ]; then
 			if eval $COMPILECMD > coordinatex_compile_output; then
 				eval $RELOADREADER
 				if [ -f coordinatex_error.tex ]; then
@@ -116,45 +119,20 @@ autocompile() {
 						#cp coordinatex_error.dvi $OUTFILE
 						eval $RELOADREADER
 					else
-						if grep "^! LaTeX Error: File \`srcltx.sty' not found.\\\\.$" coordinatex_error.tex; then
-							echo "ERROR: srcltx is set, but you don't have srcltx.sty
-						fi
-						echo "Error loading error ):"
+						exit 1
 					fi
 				fi
 			fi
-			inotifywait "$INFILE" 1>/dev/null
-		done
-	else
-		# While INFILE is available, keep checking if need to compile
-		OLDMD5=""
-		while [ -f "$INFILE" ]; do
-			# check to see if file changed
-			MD5=$(md5sum "$INFILE")
-			if [ "$MD5" != "$OLDMD5" ]; then
-				if eval $COMPILECMD > coordinatex_compile_output; then
-					eval $RELOADREADER
-					if [ -f coordinatex_error.tex ]; then
-						rm coordinatex_error.tex 2>/dev/null
-					fi
-				else
-					if [ -z $READERSHOWERROR ]; then
-						echo '\documentclass{article}\usepackage{srcltx}\\begin{document}\\noindent' > coordinatex_error.tex
-						sed -e 's,\\,\\textbackslash ,g' -e 's,$,\\\\,g' -e 's,\(\[\|\]\|<\|>\),\$&\$,g' coordinatex_compile_output >> coordinatex_error.tex
-						echo '\n\end{document}' >> coordinatex_error.tex
-						if eval $ERRORCMD 1>/dev/null; then
-							#cp coordinatex_error.dvi $OUTFILE
-							eval $RELOADREADER
-						else
-							echo "Error loading error ):"
-						fi
-					fi
-				fi
-				OLDMD5=$MD5
-			fi
+			OLDMD5=$MD5
+		fi
+		if which inotifywait >/dev/null; then 
+			inotifywait -qq $INFILE
+		else
 			sleep $COMPILEPERIOD
-		done
-	fi
+		fi
+	done
+	echo "ERROR: Hmm, shouldn't get here.  Something is wrong.  Aborting."
+	kill $COORDINATEXPID
 }
 
 #  Automatically poll for EDITOR cursor position and pass to READER
@@ -191,6 +169,7 @@ echo "Starting CoordinaTeX $VERSION"
 #  Parse arguments
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
+COORDINATEXPID=$$
 INFILE=""
 OUTFILE=""
 EDITOR=""
