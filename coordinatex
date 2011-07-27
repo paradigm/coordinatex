@@ -103,7 +103,7 @@ autocompile() {
 	OLDMD5=""
 	while true; do
 		# check to see if file changed
-		MD5=$(md5sum "$INFILE")
+		MD5=$(md5sum "$INFILE" 2>/dev/null)
 		if [ "$MD5" != "$OLDMD5" ]; then
 			if eval $COMPILECMD > coordinatex_compile_output; then
 				eval $RELOADREADER
@@ -151,7 +151,7 @@ forwardsearch() {
 		if [ ! -f coordinatex_error.tex ]; then
 			CURSORPOS=$(eval $POLLEDITOR)
 			if [ "$CURSORPOS" != "$OLDCURSORPOS" ]; then
-				eval $CALLREADER
+				eval $CALLREADER 2>/dev/null
 				OLDCURSORPOS=$CURSORPOS
 			fi
 		fi
