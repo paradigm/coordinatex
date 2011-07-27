@@ -58,6 +58,7 @@ print_help() {
 	echo "  -c <compiler>   Name of compiler to use - pdftex, latex, etc"
 	echo "  -n <seconds>    Time to wait between checking for need to compile"
 	echo "  -p <seconds>    Time to wait between polling for editor cursor"
+	echo "  -z              When compile error, print error in reader"
 	echo ""
 	echo "If a required argument is left out, CoordinaTeX may pick it up from an"
 	echo "environmental variable (such as EDITOR) or try to guess the value by"
@@ -93,7 +94,7 @@ quit() {
 
 autocompile() {
 	# Ensure variables have been set
-	if [ -z "$COMPILECMD" ] || [ -z "$COMPILEPERIOD" ] || [ -z "$RELOADREADER" ]; then
+	if [ -z "$COMPILECMD" ] || [ -z "$COMPILEPERIOD" ] || [ -z "$RELOADREADER" ] || [ -z "$ERRORCMD" ] || [ -z "$INFILE" ] || [ -z "$OUTFILE" ]; then
 		echo "ERROR: autocompile() doesn't see all the needed variables, something is wrong.  Aborting."
 		exit 1
 	fi
@@ -104,8 +105,23 @@ autocompile() {
 		# check to see if file changed
 		MD5=$(md5sum "$INFILE")
 		if [ "$MD5" != "$OLDMD5" ]; then
-			if eval $COMPILECMD; then
+			if eval $COMPILECMD > coordinatex_compile_output; then
 				eval $RELOADREADER
+				if [ -f coordinatex_error.tex ]; then
+					rm coordinatex_error.tex 2>/dev/null
+				fi
+			else
+				if [ ! -z $READERSHOWERROR ]; then
+					echo '\documentclass{article}\usepackage{srcltx}\\begin{document}\\noindent' > coordinatex_error.tex
+					sed -e 's,\\,\\textbackslash ,g' -e 's,$,\\\\,g' -e 's,\(\[\|\]\|<\|>\),\$&\$,g' coordinatex_compile_output >> coordinatex_error.tex
+					echo '\n\end{document}' >> coordinatex_error.tex
+					if eval $ERRORCMD 1>/dev/null; then
+						#cp coordinatex_error.dvi $OUTFILE
+						eval $RELOADREADER
+					else
+						echo "Error loading error ):"
+					fi
+				fi
 			fi
 			OLDMD5=$MD5
 		fi
@@ -126,10 +142,12 @@ forwardsearch() {
 	# Keep polling for cursor position
 	OLDCURSORPOS=""
 	while true; do
-		CURSORPOS=$(eval $POLLEDITOR)
-		if [ "$CURSORPOS" != "$OLDCURSORPOS" ]; then
-			eval $CALLREADER
-			OLDCURSORPOS=$CURSORPOS
+		if [ ! -f coordinatex_error.tex ]; then
+			CURSORPOS=$(eval $POLLEDITOR)
+			if [ "$CURSORPOS" != "$OLDCURSORPOS" ]; then
+				eval $CALLREADER
+				OLDCURSORPOS=$CURSORPOS
+			fi
 		fi
 		sleep $POLLPERIOD
 	done
@@ -150,6 +168,7 @@ OUTFILE=""
 EDITOR=""
 READER=""
 VIMSERVER=""
+READERSHOWERROR=""
 while getopts ":hi:o:e:v:r:" OPT; do
 	case "$OPT" in
 		h | [?] ) print_help ;;
@@ -161,6 +180,7 @@ while getopts ":hi:o:e:v:r:" OPT; do
 		c) TEXCOMPILER="$OPTARG";;
 		n) COMPILEPERIOD="$OPTARG";;
 		p) POLLPERIOD="$OPTARG";;
+		z) READERSHOWERROR=1;;
 	esac
 done
 
@@ -347,7 +367,8 @@ esac
 
 case "$TEXCOMPILER" in
 	latex )
-		COMPILECMD='latex -interaction=nonstopmode "$INFILE" 1>/dev/null'
+		COMPILECMD='latex -interaction=nonstopmode "$INFILE"'
+		ERRORCMD='latex -jobname='$(echo $INFILE | sed 's/.tex$//g')' -interaction=nonstopmode coordinatex_error.tex'
 		;;
 	* )
 		echo "ERROR: Hmm, shouldn't get here.  Something is wrong.  Aborting."
