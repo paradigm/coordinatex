@@ -116,6 +116,9 @@ autocompile() {
 						#cp coordinatex_error.dvi $OUTFILE
 						eval $RELOADREADER
 					else
+						if grep "^! LaTeX Error: File \`srcltx.sty' not found.\\\\.$" coordinatex_error.tex; then
+							echo "ERROR: srcltx is set, but you don't have srcltx.sty
+						fi
 						echo "Error loading error ):"
 					fi
 				fi
@@ -216,8 +219,8 @@ done
 #  Check for INFILE
 # .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 if [ -z "$INFILE" ]; then
-	if [ $(ls | grep ".tex$" | wc -l) -eq 1 ]; then
-		INFILE=$(ls | grep ".tex$")
+	if [ $(ls | grep -v "^coordinatex_error[.]tex" | grep -c "[.]tex$" ) -eq 1 ]; then
+		INFILE=$(ls | grep -v "^coordinatex_error[.]tex" | grep ".tex$")
 		echo "WARNING: No infile specified, guessing $INFILE"
 	else
 		echo "ERROR: Must provide a TeX filename (to be edited and compiled)"
