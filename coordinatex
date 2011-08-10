@@ -171,7 +171,7 @@ compile_loop() {
 						echo '\usepackage{srcltx}' >> coordinatex_error.tex
 					fi
 					echo '\\begin{document}\large\\noindent' >> coordinatex_error.tex
-					sed -e 's,\\,\\textbackslash{},g' -e 's,$,\\\\,g' -e 's,\(\[\|\]\|<\|>\),\$&\$,g' coordinatex_compile_output >> coordinatex_error.tex
+					sed -e 's,\\,\\textbackslash{},g' -e 's,$,\\\\,g' -e 's,\$,\\\$,g' -e 's,\(\[\|\]\|<\|>\),\$&\$,g' coordinatex_compile_output >> coordinatex_error.tex
 					echo '\n\end{document}' >> coordinatex_error.tex
 					if eval $SHOW_COMPILE_ERROR_CMD 1>/dev/null; then
 						eval $RELOAD_READER_CMD
@@ -353,24 +353,18 @@ if [ -z "$READER" ]; then
 	if [ "$TEX_COMPILER" = "latex" ]; then
 		if ps cx | grep xdvi >/dev/null; then
 			READER=xdvi
-			LAUNCH_READER=""
 		elif which xdvi 1>/dev/null; then
 			READER=xdvi
-			LAUNCH_READER=1
 		fi
 	elif [ "$TEX_COMPILER" = "pdflatex" ]; then
 		if ps cx | grep xpdf >/dev/null; then
 			READER=xpdf
-			LAUNCH_READER=""
 		elif ps cx | grep mupdf >/dev/null; then
 			READER=mupdf
-			LAUNCH_READER=""
 		elif which xpdf 1>/dev/null; then
 			READER=xpdf
-			LAUNCH_READER=1
 		elif which mupdf 1>/dev/null; then
 			READER=mupdf
-			LAUNCH_READER=1
 		fi
 	else
 		echo "ERROR: Hmm, shouldn't get here.  Something is wrong.  Aborting."
@@ -395,6 +389,11 @@ if [ -z $OKAY_READER ]; then
 	echo "Please select another reader with the -r option"
 	echo "Currently supported readers are: $SUPPORTED_READERS"
 	exit 1
+fi
+if ps cx | grep $READER 2>/dev/null; then
+	LAUNCH_READER=""
+else
+	LAUNCH_READER=1
 fi
 if  [ -z "$READER_SERVER" ] && [ "$READER" = "xpdf" ]; then
 	if [ $(ps ux | awk '$11=="xpdf" && $12=="-remote" {print $13}' | wc -l) -eq 1 ]; then
@@ -532,6 +531,7 @@ esac
 #  Set how to launch READER
 # .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 
+echo "a"$LAUNCH_READER"b"
 if [ ! -z $LAUNCH_READER ]; then
 	case "$READER" in
 		xdvi )
@@ -549,7 +549,7 @@ if [ ! -z $LAUNCH_READER ]; then
 			LAUNCH_READER_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE &'
 			;;
 		mupdf )
-			RELOAD_READER_CMD='mupdf $OUTPUT_FILE'
+			RELOAD_READER_CMD='mupdf $OUTPUT_FILE &'
 			;;
 		* )
 			echo "ERROR: Hmm, shouldn't get here (LAUNCH_READER_CMD).  Something is wrong.  Aborting."
