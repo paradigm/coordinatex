@@ -5,19 +5,19 @@
  Overview
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
-CoordinaTeX is a script which will assist the creation of TeX documents in
-several fashions:
+CoordinaTeX is a script intended to help the coordination between a text
+editor and dvi/pdf reader in the creation of TeX documents.  Specifically:
 
 1) It will automatically compile the TeX document when it changes, and if the
 compilation is successful it will tell the reader to refresh the document.
 If your editor is set to update sufficiently often, the effect should be to
 get a somewhat live update of the TeX document as it is being created.
 
-2) It will attempt to poll the text editor for the cursor position, and - if
-synctex or srctex is enabled - it will "forward-search"; that is, it will
-have the reader move to the appropriate part of the document.  If you are
-editing at the end of the document and jump to the beginning, the reader
-should also jump to the first page with you.
+2) It will attempt to automate srctex/synctex's forward searching, where it
+can.  Forward searching is where the reader jumps to the position in the
+pdf/dvi corresponding to a position in the source.  For example, if the
+editor's cursor moves from the end of the document to the beginning, the
+dvi/pdf reader will jump to the first page.
 
 3) Where possible, it will attempt to support reverse-searches as well; that
 is, the reader can tell the editor to jump to a position.  If you tell the
@@ -36,101 +36,13 @@ one reader is running, CoordinaTeX will guess these options.
 
 Moreover, CoordinaTeX will attempt to do these things in a flexible,
 extendable manner; if a given editor, output format or reader is not
-supported it should be easy to add it. (Feel free to upstream the additions
-back!)
-
-* Currently supported editors:
-	- vim
-* Currently supported TeX compilation options:
-	- latex with srcltx to DVI
-	- latex with synctex to PDF
-* Currently supported readers:
-	- xdvi
-	- xpdf
-	- mupdf
-
-Eventually I'd like to add several more editors, readers and formats.
-
-
- How to use (at the moment):
-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-
-1. Ensure you are using LaTeX, not Plain TeX or ConTeXt.
-2. Open the document in Vim  with a server name
-	(e.g.: vim --servername vimtex filename.tex)
-	(You can check the servername once in vim via :echo v:servername)
-3. Run coordinatex.  (See coordinatex -h for arguments)
-4. When you're done, switch to coordinatex and hit ctrl-c
+supported it should be easy to add it.
 
 
  Changelog:
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
-* Version 1.0a3:
-	- Supports mupdf
-* Version 1.0a2:
-	- Supports xpdf
-* Version 1.0a1:
-	- Major cleanup work
-	- Improved automatic detection of various things
-* Version 0.2.2:
-	- Changed ctrl-c sleep time to fix another bug
-* Version 0.2.1:
-	- Limited vim server guess
-	- Changed default POLLPERIOD 1 -> .2
-	- Changed "Press ENTER to quit" to "Press ctrl-c to quit" to fix bug
-* Version 0.2:
-	- Cleaned up README a bit
-	- Cleanly closes
-	- Guesses the editor if not explicitely told
-		- Tries both $EDITOR environmental variable and looking at processes
-	- Guesses the input file
-		- If there's only one *.tex file in the working directory, that's probably it.
-
-* Version 0.1:
-	- Works for a very specifc situation.
-	- Messy
-
-
- To do:
-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-
-- Figure out how to poll for cursor position in other editors
-	- emacs
-	- gedit
-	- joe
-- Figure out how to at least forward search page in other output readers
-	- Evince supports synctex?
-	- mupdf?
-	- xpdf?
-	- KDE's DVI/PDF reader(s)?
-		- Ocular
-		- KDVI supports srcltx?
-	- Adobe's reader?
-	- Mac-specific reader? (Preview?)
-	- BSD-specific reader?
-	- Solaris-specific reader?
-- Heavily comment source code
-- Support handling non-main/inputted TeX files
-- Support TeX/LaTeX/ConTeXt with all of their supported output formats
-	- PostScript?
-	- DVI, via srcltx, or other things?
-	- PDF, via synctex, or other things?
-- Maybe auto-detect as much as possible?
-	- Find main .tex file
-		- May require a comment in the handed .tex filename
-		- May grep through local files for \input{FILENAME}
-	- Find which command to use to compile
-		- If it contains \documentclass{*}, it's probably (PDF)LaTeX
-			- If it contains \usepackage{srcltx}, it's probably DVI, else PDF?
-		- If it contains \bye, it's probably (PDF)TeX
-		- Forgot what ConTeXt uses, figure that out
-	- Check environmental variables
-		- $PDFREADER
-	- Make a config?
-		- ./.coordinatex
-		- ~/.coordinatex
-- Recommended editor settings
-	- vim
-		- binding to start/stop coordinatex updating
-	- other editors
+* Version 2.0a1:
+	- Major redesign
+		- Will support both pushing and pulling cursor position (some editors,
+		  such as gedit, don't seem to have a way to poll for cursor position)
