@@ -612,9 +612,13 @@ trap quit HUP INT TERM
 if [ ! -z $LAUNCH_READER ]; then
 	if [ ! -f $OUTPUT_FILE ]; then
 		echo "Need to launch $READER but no $OUTPUT_FILE, compiling quick temp file..."
-		echo '\documentclass{article}\\begin{document}\large\\noindent Temp coordinatex file, should disappear once '$INPUT_FILE' compiles the first time\end{document}' > coordinatex_error.tex
-		eval $COMPILE_CMD 2>/dev/null
-		rm coordinatex_error.tex
+		echo '\documentclass{minimal}\\begin{document}\\noindent Temp coordinatex file, should disappear once '$INPUT_FILE' compiles the first time\end{document}' > coordinatex_error.tex
+		if eval $SHOW_COMPILE_ERROR_CMD 1>/dev/null 2>/dev/null; then
+			rm coordinatex_error.tex
+		else
+			echo "Couldn't compile temp .tex file, something is wrong.  Aborting."
+			exit 1
+		fi
 	fi
 	echo $LAUNCH_READER_CMD
 	eval $LAUNCH_READER_CMD 2>/dev/null
