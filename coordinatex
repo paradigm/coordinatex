@@ -94,6 +94,7 @@ print_help() {
 	echo "  -c <compiler>           Name of compiler to use - pdftex, latex, etc"
 	echo "  -n inotify or <seconds> Time to wait between checking for need to compile"
 	echo "  -p <seconds>            Time to wait between polling for editor cursor"
+	echo "  -m synctex or srcltx    Method to do forward and/or reverse search"
 	echo "  -z                      When compile error, do NOT print error in reader"
 	echo ""
 	echo "If a required argument is left out, CoordinaTeX may pick it up from an"
