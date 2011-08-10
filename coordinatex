@@ -275,10 +275,10 @@ fi
 # .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 if [ -z "$OUTPUT_FILENAME" ]; then
 	if [ -z "$TEX_COMPILER" ]; then
-		if [ $(ls -1 | grep "\.dvi$" 1>/dev/null && ! ls -1 | grep -c "\.pdf$") -eq 1 ]; then
+		if [ $(ls -1 | grep -c "\.dvi$") -gt 0 ]  && [ $(ls -1 | grep -c "\.pdf$") -eq 0 ]; then
 			TEX_COMPILER="latex"
 			echo "WARNING: No TeX compiler specified, guessing: $TEX_COMPILER"
-		elif [ $(ls -1 | grep "\.dvi$" 1>/dev/null && ls -1 | grep "\.pdf$") -ne 1 ]; then
+		elif [ $(ls -1 | grep -c "\.dvi$") -eq 0 ] && [ $(ls -1 | grep -c "\.pdf$") -gt 0 ]; then
 			TEX_COMPILER="pdflatex"
 			echo "WARNING: No TeX compiler specified, guessing: $TEX_COMPILER"
 		else
@@ -406,7 +406,7 @@ fi
 #  Check for SYNC_METHOD
 # .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 if [ -z "$SYNC_METHOD" ]; then
-	SYNC_METHOD=$(awk '/\\usepackage{srcltx}/{SRCLTXLINE=NR}/\\begin{document}/{BEGINDOCLINE=NR}END{if(SRCLTXLINE!="" && SRCLTXLINE<BEGINDOCLINE){print "srcltx"}else{print "synctex"}}' $INPUT_FILE)
+	SYNC_METHOD=$(awk '/$[^%]*\\usepackage{srcltx}/{SRCLTXLINE=NR}/%[^%]*\\begin{document}/{BEGINDOCLINE=NR}END{if(SRCLTXLINE!="" && SRCLTXLINE<BEGINDOCLINE){print "srcltx"}else{print "synctex"}}' $INPUT_FILE)
 	echo "WARNING: No sync method specified, defaulting to: $SYNC_METHOD"
 fi
 
