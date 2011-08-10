@@ -165,11 +165,11 @@ compile_loop() {
 				fi
 			else
 				if [ -z $READER_SHOW_ERROR ]; then
-					echo '\documentclass{article}' > coordinatex_error.tex
+					echo '\documentclass{article}\usepackage{fullpage}' > coordinatex_error.tex
 					if [ "$SYNC_METHOD" = "srcltx" ]; then
 						echo '\usepackage{srcltx}' >> coordinatex_error.tex
 					fi
-					echo '\\begin{document}\noindent' >> coordinatex_error.tex
+					echo '\\begin{document}\large\\noindent' >> coordinatex_error.tex
 					sed -e 's,\\,\\textbackslash{},g' -e 's,$,\\\\,g' -e 's,\(\[\|\]\|<\|>\),\$&\$,g' coordinatex_compile_output >> coordinatex_error.tex
 					echo '\n\end{document}' >> coordinatex_error.tex
 					if eval $SHOW_COMPILE_ERROR_CMD 1>/dev/null; then
@@ -181,7 +181,7 @@ compile_loop() {
 			fi
 		fi
 		if [ "$COMPILE_PERIOD" = "inotify" ]; then
-			inotifywait "$INPUT_FILE" >/dev/null
+			inotifywait "$INPUT_FILE" 1>/dev/null 2>/dev/null
 		else
 			sleep $COMPILE_PERIOD
 		fi
@@ -275,10 +275,10 @@ fi
 # .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 if [ -z "$OUTPUT_FILENAME" ]; then
 	if [ -z "$TEX_COMPILER" ]; then
-		if ls -1 | grep "\.dvi$" 1>/dev/null && ! ls -1 | grep "\.pdf$" 1>/dev/null; then
+		if [ $(ls -1 | grep "\.dvi$" 1>/dev/null && ! ls -1 | grep -c "\.pdf$") -eq 1 ]; then
 			TEX_COMPILER="latex"
 			echo "WARNING: No TeX compiler specified, guessing: $TEX_COMPILER"
-		elif ! ls -1 | grep "\.dvi$" 1>/dev/null && ls -1 | grep "\.pdf$" 1>/dev/null; then
+		elif [ $(ls -1 | grep "\.dvi$" 1>/dev/null && ls -1 | grep "\.pdf$") -ne 1 ]; then
 			TEX_COMPILER="pdflatex"
 			echo "WARNING: No TeX compiler specified, guessing: $TEX_COMPILER"
 		else
@@ -459,7 +459,7 @@ case "$READER" in
 			READER_FORWARD_SEARCH_CMD="$READER_FORWARD_SEARCH_CMD"' -editor "$REVERSE_SEARCH_JUMP_CMD"'
 		fi
 		READER_FORWARD_SEARCH_CMD="$READER_FORWARD_SEARCH_CMD"' -sourceposition "$CURSOR_POSITION $INPUT_FILE"'" $OUTPUT_FILE"
-		if [ "$SYNC_METHOD" = "srcltx" ]; then
+		if [ "$SYNC_METHOD" = "synctex" ]; then
 			echo "WARNING: No srcltx, forward searching will be disabled."
 			READER_FORWARD_SEARCH_CMD=""
 		fi
