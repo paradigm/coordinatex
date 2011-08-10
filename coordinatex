@@ -495,7 +495,12 @@ case "$READER" in
 		echo "WARNING: xpdf does not support reverse seaching, reverse searching will be disabled."
 		;;
 	mupdf )
-		READER_FORWARD_SEARCH_CMD='xdotool type --window $(xwininfo -root -children | awk '"'"'/mupdf/{print$1}'"'"') $(synctex view -i $CURSOR_POSITION:$INPUT_FILE -o $OUTPUT_FILE | awk -F: '"'"'/^Page:[0-9]/{print$2;exit}'"')g"
+		if which xdotool 1>/dev/null 2>/dev/null; then
+			READER_FORWARD_SEARCH_CMD='xdotool type --window $(xwininfo -root -children | awk '"'"'/mupdf/{print$1}'"'"') $(synctex view -i $CURSOR_POSITION:$INPUT_FILE -o $OUTPUT_FILE | awk -F: '"'"'/^Page:[0-9]/{print$2;exit}'"')g"
+		else
+			READER_FORWARD_SEARCH_CMD=""
+			echo "WARNING: mupdf forward search requires xdotool, forward searching will be disabled."
+		fi
 		if [ "$SYNC_METHOD" = "srcltx" ]; then
 			echo "WARNING: mupdf forward search requires synctex, forward searching will be disabled."
 			READER_FORWARD_SEARCH_CMD=""
@@ -516,11 +521,15 @@ case "$READER" in
 		RELOAD_READER_CMD='pkill -USR1 xdvi'
 		;;
 	xpdf )
-#		RELOAD_READER_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE &'
 		RELOAD_READER_CMD='xpdf -remote $READER_SERVER -reload &'
 		;;
 	mupdf )
-		RELOAD_READER_CMD='xdotool type --window $(xwininfo -root -children | awk '"'"'/mupdf/{print$1}'"'"') r'
+		if which xdotool 1>/dev/null 2>/dev/null; then
+			RELOAD_READER_CMD='xdotool type --window $(xwininfo -root -children | awk '"'"'/mupdf/{print$1}'"'"') r'
+		else
+			RELOAD_READER_CMD=""
+			echo "WARNING: mupdf reload requires xdotool, mupdf reloading will be disabled."
+		fi
 		;;
 	* )
 		echo "ERROR: Hmm, shouldn't get here (READER_RELOAD_CMD).  Something is wrong.  Aborting."
@@ -531,7 +540,6 @@ esac
 #  Set how to launch READER
 # .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 
-echo "a"$LAUNCH_READER"b"
 if [ ! -z $LAUNCH_READER ]; then
 	case "$READER" in
 		xdvi )
@@ -549,7 +557,7 @@ if [ ! -z $LAUNCH_READER ]; then
 			LAUNCH_READER_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE &'
 			;;
 		mupdf )
-			RELOAD_READER_CMD='mupdf $OUTPUT_FILE &'
+			LAUNCH_READER_CMD='mupdf $OUTPUT_FILE &'
 			;;
 		* )
 			echo "ERROR: Hmm, shouldn't get here (LAUNCH_READER_CMD).  Something is wrong.  Aborting."
@@ -620,7 +628,6 @@ if [ ! -z $LAUNCH_READER ]; then
 			exit 1
 		fi
 	fi
-	echo $LAUNCH_READER_CMD
 	eval $LAUNCH_READER_CMD 2>/dev/null
 	# If launching a new reader, give it a couple seconds to launch before starting other loops
 	echo "Giving $READER a couple seconds to launch..."
