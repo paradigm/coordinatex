@@ -68,7 +68,7 @@
 # Currently supported readers:
 # - xdvi
 #
-# There are plans for more!
+# Eventually I'd like to add several more editors, readers and formats
 
 VERSION="1.0a1"
 
