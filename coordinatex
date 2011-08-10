@@ -90,7 +90,8 @@ print_help() {
 	echo "  -o <filename>           Output PDF or DVI file"
 	echo "  -e <editor>             Program to edit TeX file"
 	echo "  -r <reader>             Program to view compiled DVI or PDF"
-	echo "  -s <server_name>        Editor server name, where appropriate"
+	echo "  -s <editor_server>      Editor server name, where appropriate"
+	echo "  -v <reader_server>      Reader server name, where appropriate"
 	echo "  -c <compiler>           Name of compiler to use - pdftex, latex, etc"
 	echo "  -n inotify or <seconds> Time to wait between checking for need to compile"
 	echo "  -p <seconds>            Time to wait between polling for editor cursor"
@@ -147,7 +148,7 @@ quit() {
 
 compile_loop() {
 	# Ensure variables have been set
-	if [ -z "$COMPILE_CMD" ] || [ -z "$COMPILE_PERIOD" ] || [ -z "$RELOAD_READER_CMD" ] || [ -z "$SHOW_COMPILE_ERROR_CMD" ] || [ -z "$INPUT_FILE" ] || [ -z "$OUTPUT_FILE" ] || [ -z $COORDINATEX_PID ] || [ -z $SYNC_METHOD ]; then
+	if [ -z "$COMPILE_CMD" ] || [ -z "$COMPILE_PERIOD" ] ||  [ -z "$SHOW_COMPILE_ERROR_CMD" ] || [ -z "$INPUT_FILE" ] || [ -z "$OUTPUT_FILE" ] || [ -z $COORDINATEX_PID ] || [ -z $SYNC_METHOD ]; then
 		echo "ERROR: compile_loop() doesn't see all the needed variables, something is wrong.  Aborting."
 		exit 1
 	fi
@@ -244,6 +245,7 @@ while getopts ":hi:o:e:r:v:c:n:p:z" OPT; do
 		e) EDITOR="$OPTARG";;
 		r) READER="$OPTARG";;
 		s) EDITOR_SERVER="$OPTARG";;
+		v) READER_SERVER="$OPTARG";;
 		c) TEX_COMPILER="$OPTARG";;
 		n) COMPILE_PERIOD="$OPTARG";;
 		p) POLL_PERIOD="$OPTARG";;
@@ -351,14 +353,18 @@ if [ -z "$READER" ]; then
 	if [ "$TEX_COMPILER" = "latex" ]; then
 		if ps cx | grep xdvi >/dev/null; then
 			READER=xdvi
+			LAUNCH_READER=""
 		elif which xdvi 1>/dev/null; then
 			READER=xdvi
+			LAUNCH_READER=1
 		fi
 	elif [ "$TEX_COMPILER" = "pdflatex" ]; then
 		if ps cx | grep xpdf >/dev/null; then
 			READER=xpdf
+			LAUNCH_READER=0
 		elif which xpdf 1>/dev/null; then
 			READER=xpdf
+			LAUNCH_READER=1
 		fi
 	else
 		echo "ERROR: Hmm, shouldn't get here.  Something is wrong.  Aborting."
@@ -371,7 +377,7 @@ if [ -z "$READER" ]; then
 		echo "WARNING: No reader specified, guessing: $READER"
 	fi
 fi
-SUPPORTED_READERS="xdvi"
+SUPPORTED_READERS="xdvi xpdf"
 OKAY_READER=""
 for VAR in $SUPPORTED_READERS; do
 	if [ "$VAR" = "$READER" ]; then
@@ -383,6 +389,17 @@ if [ -z $OKAY_READER ]; then
 	echo "Please select another reader with the -r option"
 	echo "Currently supported readers are: $SUPPORTED_READERS"
 	exit 1
+fi
+if  [ -z "$READER_SERVER" ] && [ "$READER" = "xpdf" ]; then
+	if [ $(ps ux | awk '$11=="xpdf" && $12=="-remote" {print $13}' | wc -l) -eq 1 ]; then
+		READER_SERVER=$(ps ux | awk '$11=="xpdf" && $12=="-remote" {print $13}')
+		echo "WARNING: No xpdf server specified, guessing: $READER_SERVER"
+	else
+		READER_SERVER="coordinatex"
+		LAUNCH_READER=1
+		echo "WARNING: No xpdf server given, defaulting to: $READER_SERVER"
+		echo "See xpdf's man page, section \"REMOTE SERVER MODE\""
+	fi
 fi
 
 #  Check for COMPILE_PERIOD
@@ -407,7 +424,7 @@ fi
 # .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 if [ -z "$SYNC_METHOD" ]; then
 	SYNC_METHOD=$(awk '/$[^%]*\\usepackage{srcltx}/{SRCLTXLINE=NR}/%[^%]*\\begin{document}/{BEGINDOCLINE=NR}END{if(SRCLTXLINE!="" && SRCLTXLINE<BEGINDOCLINE){print "srcltx"}else{print "synctex"}}' $INPUT_FILE)
-	echo "WARNING: No sync method specified, defaulting to: $SYNC_METHOD"
+	echo "WARNING: No sync method specified, guessing: $SYNC_METHOD"
 fi
 
 #  Set needed values to be evaluated in the loops
@@ -460,12 +477,20 @@ case "$READER" in
 		fi
 		READER_FORWARD_SEARCH_CMD="$READER_FORWARD_SEARCH_CMD"' -sourceposition "$CURSOR_POSITION $INPUT_FILE"'" $OUTPUT_FILE"
 		if [ "$SYNC_METHOD" = "synctex" ]; then
-			echo "WARNING: No srcltx, forward searching will be disabled."
+			echo "WARNING: xdvi forward and reverse searches require srcltx, forward and reverse searching will be disabled."
 			READER_FORWARD_SEARCH_CMD=""
 		fi
 		;;
+	xpdf )
+		READER_FORWARD_SEARCH_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE 2>/dev/null'
+		if [ "$SYNC_METHOD" = "srcltx" ]; then
+			echo "WARNING: xpdf forward search requires synctex, forward searching will be disabled."
+			READER_FORWARD_SEARCH_CMD=""
+		fi
+		echo "WARNING: xpdf does not support reverse seaching, reverse searching will be disabled."
+		;;
 	* )
-		echo "ERROR: Hmm, shouldn't get here.  Something is wrong.  Aborting."
+		echo "ERROR: Hmm, shouldn't get here (READER_FORWARD_SEARCH_CMD).  Something is wrong.  Aborting."
 		exit 1
 		;;
 esac
@@ -477,8 +502,35 @@ case "$READER" in
 	xdvi )
 		RELOAD_READER_CMD='pkill -USR1 xdvi'
 		;;
+	xpdf )
+		RELOAD_READER_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE 2>/dev/null'
+		;;
 	* )
-		echo "ERROR: Hmm, shouldn't get here.  Something is wrong.  Aborting."
+		echo "ERROR: Hmm, shouldn't get here (READER_RELOAD_CMD).  Something is wrong.  Aborting."
+		exit 1
+		;;
+esac
+
+#  Set how to launch READER
+# .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+
+case "$READER" in
+	xdvi )
+		LAUNCH_READER_CMD='xdvi'
+		if [ ! -z "$REVERSE_SEARCH_JUMP_CMD" ]; then
+			LAUNCH_READER_CMD="$LAUNCH_READER_CMD"' -editor "$REVERSE_SEARCH_JUMP_CMD"'
+		fi
+		if [ "$SYNC_METHOD" = "srcltx" ]; then
+			LAUNCH_READER_CMD="$LAUNCH_READER_CMD"' -sourceposition "$CURSOR_POSITION $INPUT_FILE"'" $OUTPUT_FILE"
+		else
+			LAUNCH_READER_CMD="$LAUNCH_READER_CMD $OUTPUT_FILE"
+		fi
+		;;
+	xpdf )
+		LAUNCH_READER_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE 2>/dev/null &'
+		;;
+	* )
+		echo "ERROR: Hmm, shouldn't get here (READER_RELOAD_CMD).  Something is wrong.  Aborting."
 		exit 1
 		;;
 esac
@@ -491,6 +543,12 @@ case "$TEX_COMPILER" in
 		COMPILE_CMD='latex -interaction=nonstopmode "$INPUT_FILE"'
 		if [ -z $READER_SHOW_ERROR ]; then
 			SHOW_COMPILE_ERROR_CMD='latex -jobname='$(echo $INPUT_FILE | sed 's/[.]tex$//g')' -interaction=nonstopmode coordinatex_error.tex'
+		fi
+		;;
+	pdflatex )
+		COMPILE_CMD='pdflatex -interaction=nonstopmode "$INPUT_FILE"'
+		if [ -z $READER_SHOW_ERROR ]; then
+			SHOW_COMPILE_ERROR_CMD='pdflatex -jobname='$(echo $INPUT_FILE | sed 's/[.]tex$//g')' -interaction=nonstopmode coordinatex_error.tex'
 		fi
 		;;
 	* )
@@ -508,10 +566,20 @@ COORDINATEX_PID=$$
 trap quit HUP INT TERM
 
 
+#  Launch reader
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+
+if [ ! -z $LAUNCH_READER ]; then
+	eval $LAUNCH_READER_CMD
+	# If launching a new reader, give it a couple seconds to launch before starting other loops
+	sleep 2s
+fi
+
 #  Start compile loop
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
-if [ -z "$COMPILE_CMD" ] || [ -z "$COMPILE_PERIOD" ] || [ -z "$RELOAD_READER_CMD" ] || [ -z "$SHOW_COMPILE_ERROR_CMD" ] || [ -z "$INPUT_FILE" ] || [ -z "$OUTPUT_FILE" ] || [ -z $COORDINATEX_PID ] || [ -z $SYNC_METHOD ]; then
+if [ -z "$COMPILE_CMD" ] || [ -z "$COMPILE_PERIOD" ] || [ -z "$SHOW_COMPILE_ERROR_CMD" ] || [ -z "$INPUT_FILE" ] || [ -z "$OUTPUT_FILE" ] || [ -z $COORDINATEX_PID ] || [ -z $SYNC_METHOD ]; then
 	COMPILE_LOOP_PID=""
 	echo "Compile loop is DISABLED."
 else
