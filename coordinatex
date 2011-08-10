@@ -160,7 +160,7 @@ compile_loop() {
 		MD5=$(md5sum "$INPUT_FILE" 2>/dev/null)
 		if [ "$MD5" != "$OLD_MD5" ]; then
 			if eval $COMPILE_CMD > coordinatex_compile_output; then
-				eval $RELOAD_READER_CMD
+				eval $RELOAD_READER_CMD 2>/dev/null
 				if [ -f coordinatex_error.tex ]; then
 					rm coordinatex_error.tex 2>/dev/null
 				fi
@@ -361,7 +361,7 @@ if [ -z "$READER" ]; then
 	elif [ "$TEX_COMPILER" = "pdflatex" ]; then
 		if ps cx | grep xpdf >/dev/null; then
 			READER=xpdf
-			LAUNCH_READER=0
+			LAUNCH_READER=""
 		elif which xpdf 1>/dev/null; then
 			READER=xpdf
 			LAUNCH_READER=1
@@ -482,7 +482,7 @@ case "$READER" in
 		fi
 		;;
 	xpdf )
-		READER_FORWARD_SEARCH_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE 2>/dev/null'
+		READER_FORWARD_SEARCH_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE $(synctex view -i $CURSOR_POSITION:$INPUT_FILE -o $OUTPUT_FILE | awk -F: '"'"'/^Page:[0-9]/{print$2}'"')"
 		if [ "$SYNC_METHOD" = "srcltx" ]; then
 			echo "WARNING: xpdf forward search requires synctex, forward searching will be disabled."
 			READER_FORWARD_SEARCH_CMD=""
@@ -503,7 +503,7 @@ case "$READER" in
 		RELOAD_READER_CMD='pkill -USR1 xdvi'
 		;;
 	xpdf )
-		RELOAD_READER_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE 2>/dev/null'
+		RELOAD_READER_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE'
 		;;
 	* )
 		echo "ERROR: Hmm, shouldn't get here (READER_RELOAD_CMD).  Something is wrong.  Aborting."
@@ -514,41 +514,59 @@ esac
 #  Set how to launch READER
 # .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 
-case "$READER" in
-	xdvi )
-		LAUNCH_READER_CMD='xdvi'
-		if [ ! -z "$REVERSE_SEARCH_JUMP_CMD" ]; then
-			LAUNCH_READER_CMD="$LAUNCH_READER_CMD"' -editor "$REVERSE_SEARCH_JUMP_CMD"'
-		fi
-		if [ "$SYNC_METHOD" = "srcltx" ]; then
-			LAUNCH_READER_CMD="$LAUNCH_READER_CMD"' -sourceposition "$CURSOR_POSITION $INPUT_FILE"'" $OUTPUT_FILE"
-		else
-			LAUNCH_READER_CMD="$LAUNCH_READER_CMD $OUTPUT_FILE"
-		fi
-		;;
-	xpdf )
-		LAUNCH_READER_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE 2>/dev/null &'
-		;;
-	* )
-		echo "ERROR: Hmm, shouldn't get here (READER_RELOAD_CMD).  Something is wrong.  Aborting."
-		exit 1
-		;;
-esac
+if [ ! -z $LAUNCH_READER ]; then
+	case "$READER" in
+		xdvi )
+			LAUNCH_READER_CMD='xdvi'
+			if [ ! -z "$REVERSE_SEARCH_JUMP_CMD" ]; then
+				LAUNCH_READER_CMD="$LAUNCH_READER_CMD"' -editor "$REVERSE_SEARCH_JUMP_CMD"'
+			fi
+			if [ "$SYNC_METHOD" = "srcltx" ]; then
+				LAUNCH_READER_CMD="$LAUNCH_READER_CMD"' -sourceposition "$CURSOR_POSITION $INPUT_FILE"'" $OUTPUT_FILE"
+			else
+				LAUNCH_READER_CMD="$LAUNCH_READER_CMD $OUTPUT_FILE"
+			fi
+			;;
+		xpdf )
+			LAUNCH_READER_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE &'
+			;;
+		* )
+			echo "ERROR: Hmm, shouldn't get here (LAUNCH_READER_CMD).  Something is wrong.  Aborting."
+			exit 1
+			;;
+	esac
+else
+	LAUNCH_READER_CMD=""
+fi
 
 #  Set command to compile TeX document
 # .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 
 case "$TEX_COMPILER" in
 	latex )
-		COMPILE_CMD='latex -interaction=nonstopmode "$INPUT_FILE"'
-		if [ -z $READER_SHOW_ERROR ]; then
-			SHOW_COMPILE_ERROR_CMD='latex -jobname='$(echo $INPUT_FILE | sed 's/[.]tex$//g')' -interaction=nonstopmode coordinatex_error.tex'
+		if [ "$SYNC_METHOD" = "srcltx" ]; then
+			COMPILE_CMD='latex -interaction=nonstopmode "$INPUT_FILE"'
+			if [ -z $READER_SHOW_ERROR ]; then
+				SHOW_COMPILE_ERROR_CMD='latex -jobname='$(echo $INPUT_FILE | sed 's/[.]tex$//g')' -interaction=nonstopmode coordinatex_error.tex'
+			fi
+		elif [ "$SYNC_METHOD" = "synctex" ]; then
+			COMPILE_CMD='latex -interaction=nonstopmode -synctex=1 "$INPUT_FILE"'
+			if [ -z $READER_SHOW_ERROR ]; then
+				SHOW_COMPILE_ERROR_CMD='latex -jobname='$(echo $INPUT_FILE | sed 's/[.]tex$//g')' -interaction=nonstopmode coordinatex_error.tex'
+			fi
 		fi
 		;;
 	pdflatex )
-		COMPILE_CMD='pdflatex -interaction=nonstopmode "$INPUT_FILE"'
-		if [ -z $READER_SHOW_ERROR ]; then
-			SHOW_COMPILE_ERROR_CMD='pdflatex -jobname='$(echo $INPUT_FILE | sed 's/[.]tex$//g')' -interaction=nonstopmode coordinatex_error.tex'
+		if [ "$SYNC_METHOD" = "srcltx" ]; then
+			COMPILE_CMD='pdflatex -interaction=nonstopmode "$INPUT_FILE"'
+			if [ -z $READER_SHOW_ERROR ]; then
+				SHOW_COMPILE_ERROR_CMD='pdflatex -jobname='$(echo $INPUT_FILE | sed 's/[.]tex$//g')' -interaction=nonstopmode coordinatex_error.tex'
+			fi
+		elif [ "$SYNC_METHOD" = "synctex" ]; then
+			COMPILE_CMD='pdflatex -interaction=nonstopmode -synctex=1 "$INPUT_FILE"'
+			if [ -z $READER_SHOW_ERROR ]; then
+				SHOW_COMPILE_ERROR_CMD='pdflatex -jobname='$(echo $INPUT_FILE | sed 's/[.]tex$//g')' -interaction=nonstopmode coordinatex_error.tex'
+			fi
 		fi
 		;;
 	* )
@@ -571,8 +589,9 @@ trap quit HUP INT TERM
 
 
 if [ ! -z $LAUNCH_READER ]; then
-	eval $LAUNCH_READER_CMD
+	eval $LAUNCH_READER_CMD 2>/dev/null
 	# If launching a new reader, give it a couple seconds to launch before starting other loops
+	echo "Giving $READER a couple seconds to launch..."
 	sleep 2s
 fi
 
