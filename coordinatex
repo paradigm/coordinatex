@@ -165,7 +165,7 @@ compile_loop() {
 					rm coordinatex_error.tex 2>/dev/null
 				fi
 			else
-				if [ -z $READER_SHOW_ERROR ]; then
+				if [ -z $READER_DONT_SHOW_ERROR ]; then
 					echo '\documentclass{article}\usepackage{fullpage}' > coordinatex_error.tex
 					if [ "$SYNC_METHOD" = "srcltx" ]; then
 						echo '\usepackage{srcltx}' >> coordinatex_error.tex
@@ -250,7 +250,7 @@ while getopts ":hi:o:e:r:v:c:n:p:z" OPT; do
 		n) COMPILE_PERIOD="$OPTARG";;
 		p) POLL_PERIOD="$OPTARG";;
 		m) SYNC_METHOD="$OPTARG";;
-		z) READER_SHOW_ERROR=1;;
+		z) READER_DONT_SHOW_ERROR=1;;
 	esac
 done
 
@@ -546,12 +546,12 @@ case "$TEX_COMPILER" in
 	latex )
 		if [ "$SYNC_METHOD" = "srcltx" ]; then
 			COMPILE_CMD='latex -interaction=nonstopmode "$INPUT_FILE"'
-			if [ -z $READER_SHOW_ERROR ]; then
+			if [ -z $READER_DONT_SHOW_ERROR ]; then
 				SHOW_COMPILE_ERROR_CMD='latex -jobname='$(echo $INPUT_FILE | sed 's/[.]tex$//g')' -interaction=nonstopmode coordinatex_error.tex'
 			fi
 		elif [ "$SYNC_METHOD" = "synctex" ]; then
 			COMPILE_CMD='latex -interaction=nonstopmode -synctex=1 "$INPUT_FILE"'
-			if [ -z $READER_SHOW_ERROR ]; then
+			if [ -z $READER_DONT_SHOW_ERROR ]; then
 				SHOW_COMPILE_ERROR_CMD='latex -jobname='$(echo $INPUT_FILE | sed 's/[.]tex$//g')' -interaction=nonstopmode coordinatex_error.tex'
 			fi
 		fi
@@ -559,12 +559,12 @@ case "$TEX_COMPILER" in
 	pdflatex )
 		if [ "$SYNC_METHOD" = "srcltx" ]; then
 			COMPILE_CMD='pdflatex -interaction=nonstopmode "$INPUT_FILE"'
-			if [ -z $READER_SHOW_ERROR ]; then
+			if [ -z $READER_DONT_SHOW_ERROR ]; then
 				SHOW_COMPILE_ERROR_CMD='pdflatex -jobname='$(echo $INPUT_FILE | sed 's/[.]tex$//g')' -interaction=nonstopmode coordinatex_error.tex'
 			fi
 		elif [ "$SYNC_METHOD" = "synctex" ]; then
 			COMPILE_CMD='pdflatex -interaction=nonstopmode -synctex=1 "$INPUT_FILE"'
-			if [ -z $READER_SHOW_ERROR ]; then
+			if [ -z $READER_DONT_SHOW_ERROR ]; then
 				SHOW_COMPILE_ERROR_CMD='pdflatex -jobname='$(echo $INPUT_FILE | sed 's/[.]tex$//g')' -interaction=nonstopmode coordinatex_error.tex'
 			fi
 		fi
@@ -589,6 +589,12 @@ trap quit HUP INT TERM
 
 
 if [ ! -z $LAUNCH_READER ]; then
+	if [ ! -f $OUTPUT_FILE ]; then
+		echo "Need to launch $READER but no $OUTPUT_FILE, compiling quick temp file..."
+		echo '\documentclass{article}\\begin{document}\large\\noindent Temp coordinatex file, should disappear once '$INPUT_FILE' compiles the first time\end{document}' > coordinatex_error.tex
+		eval $COMPILE_CMD 2>/dev/null
+		rm coordinatex_error.tex
+	fi
 	echo $LAUNCH_READER_CMD
 	eval $LAUNCH_READER_CMD 2>/dev/null
 	# If launching a new reader, give it a couple seconds to launch before starting other loops
