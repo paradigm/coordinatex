@@ -147,14 +147,14 @@ quit() {
 
 compile_loop() {
 	# Ensure variables have been set
-	if [ -z "$COMPILE_CMD" ] || [ -z "$COMPILE_PERIOD" ] || [ -z "$RELOAD_READER_CMD" ] || [ -z "$SHOW_COMPILE_ERROR_CMD" ] || [ -z "$INPUT_FILE" ] || [ -z "$OUTPUT_FILE" ] || [ -z $COORDINATEX_PID ]; then
+	if [ -z "$COMPILE_CMD" ] || [ -z "$COMPILE_PERIOD" ] || [ -z "$RELOAD_READER_CMD" ] || [ -z "$SHOW_COMPILE_ERROR_CMD" ] || [ -z "$INPUT_FILE" ] || [ -z "$OUTPUT_FILE" ] || [ -z $COORDINATEX_PID ] || [ -z $SYNC_METHOD ]; then
 		echo "ERROR: compile_loop() doesn't see all the needed variables, something is wrong.  Aborting."
 		exit 1
 	fi
 
 	# Continuously check if need to compile
 	OLD_MD5=""
-	while true ; do
+	while true; do
 		# check to see if the file changed
 		MD5=$(md5sum "$INPUT_FILE" 2>/dev/null)
 		if [ "$MD5" != "$OLD_MD5" ]; then
@@ -166,8 +166,10 @@ compile_loop() {
 			else
 				if [ -z $READER_SHOW_ERROR ]; then
 					echo '\documentclass{article}' > coordinatex_error.tex
-					echo $(awk '/\\usepackage{srcltx}/{SRCLTXLINE=NR}/\\begin{document}/{BEGINDOCLINE=NR}END{if(SRCLTXLINE!="" && SRCLTXLINE<BEGINDOCLINE){print "\\usepackage{srcltx}"}}' $INPUT_FILE) >> coordinatex_error.tex
-					echo '\begin{document}\noindent' >> coordinatex_error.tex
+					if [ "$SYNC_METHOD" = "srcltx" ]; then
+						echo '\usepackage{srcltx}' >> coordinatex_error.tex
+					fi
+					echo '\\begin{document}\noindent' >> coordinatex_error.tex
 					sed -e 's,\\,\\textbackslash{},g' -e 's,$,\\\\,g' -e 's,\(\[\|\]\|<\|>\),\$&\$,g' coordinatex_compile_output >> coordinatex_error.tex
 					echo '\n\end{document}' >> coordinatex_error.tex
 					if eval $SHOW_COMPILE_ERROR_CMD 1>/dev/null; then
@@ -193,7 +195,7 @@ compile_loop() {
 
 forward_search_loop() {
 	# Ensure variables have been set
-	if [ -z "$FORWARD_SEARCH_POLL_EDITOR_CMD" ] || [ -z "$READER_FORWARD_SEARCH_CMD" ] || [ -z "$POLL_PERIOD" ]; then
+	if [ -z "$FORWARD_SEARCH_POLL_EDITOR_CMD" ] || [ -z "$READER_FORWARD_SEARCH_CMD" ] || [ -z "$POLL_PERIOD" ] || [ -z "$COORDINATEX_PID" ]; then
 		echo "ERROR: forward_search_loop() doesn't see all the needed variables, something is wrong.  Aborting."
 		exit 1
 	fi
@@ -245,6 +247,7 @@ while getopts ":hi:o:e:r:v:c:n:p:z" OPT; do
 		c) TEX_COMPILER="$OPTARG";;
 		n) COMPILE_PERIOD="$OPTARG";;
 		p) POLL_PERIOD="$OPTARG";;
+		m) SYNC_METHOD="$OPTARG";;
 		z) READER_SHOW_ERROR=1;;
 	esac
 done
@@ -393,11 +396,18 @@ if [ -z "$COMPILE_PERIOD" ]; then
 	echo "WARNING: No delay between file change specified, defaulting to: $COMPILE_PERIOD"
 fi
 
-#  Check for POLLPERIOD
+#  Check for POLL_PERIOD
 # .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 if [ -z "$POLL_PERIOD" ]; then
 	POLL_PERIOD=".2"
 	echo "WARNING: No delay between cursor position polling specified, defaulting to: $POLL_PERIOD"
+fi
+
+#  Check for SYNC_METHOD
+# .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+if [ -z "$SYNC_METHOD" ]; then
+	SYNC_METHOD=$(awk '/\\usepackage{srcltx}/{SRCLTXLINE=NR}/\\begin{document}/{BEGINDOCLINE=NR}END{if(SRCLTXLINE!="" && SRCLTXLINE<BEGINDOCLINE){print "srcltx"}else{print "synctex"}}' $INPUT_FILE)
+	echo "WARNING: No sync method specified, defaulting to: $SYNC_METHOD"
 fi
 
 #  Set needed values to be evaluated in the loops
@@ -449,8 +459,7 @@ case "$READER" in
 			READER_FORWARD_SEARCH_CMD="$READER_FORWARD_SEARCH_CMD"' -editor "$REVERSE_SEARCH_JUMP_CMD"'
 		fi
 		READER_FORWARD_SEARCH_CMD="$READER_FORWARD_SEARCH_CMD"' -sourceposition "$CURSOR_POSITION $INPUT_FILE"'" $OUTPUT_FILE"
-		SRCLTX_ENABLED=$(awk '/\\usepackage{srcltx}/{SRCLTXLINE=NR}/\\begin{document}/{BEGINDOCLINE=NR}END{if(SRCLTXLINE!="" && SRCLTXLINE<BEGINDOCLINE){print "srcltx"}}' $INPUT_FILE)
-		if [ "$SRCLTX_ENABLED" = "" ]; then
+		if [ "$SYNC_METHOD" = "srcltx" ]; then
 			echo "WARNING: No srcltx, forward searching will be disabled."
 			READER_FORWARD_SEARCH_CMD=""
 		fi
@@ -502,7 +511,7 @@ trap quit HUP INT TERM
 #  Start compile loop
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
-if [ -z "$COMPILE_CMD" ] || [ -z "$COMPILE_PERIOD" ] || [ -z "$INPUT_FILE" ] || [ -z "$OUTPUT_FILE" ]; then
+if [ -z "$COMPILE_CMD" ] || [ -z "$COMPILE_PERIOD" ] || [ -z "$RELOAD_READER_CMD" ] || [ -z "$SHOW_COMPILE_ERROR_CMD" ] || [ -z "$INPUT_FILE" ] || [ -z "$OUTPUT_FILE" ] || [ -z $COORDINATEX_PID ] || [ -z $SYNC_METHOD ]; then
 	COMPILE_LOOP_PID=""
 	echo "Compile loop is DISABLED."
 else
@@ -514,7 +523,7 @@ fi
 #  Start forward search loop
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
-if [ -z "$READER_FORWARD_SEARCH_CMD" ] || [ -z "$FORWARD_SEARCH_POLL_EDITOR_CMD" ] || [ -z "$REVERSE_SEARCH_JUMP_CMD" ] || [ -z "$POLL_PERIOD" ]; then
+if [ -z "$READER_FORWARD_SEARCH_CMD" ] || [ -z "$FORWARD_SEARCH_POLL_EDITOR_CMD" ] || [ -z "$REVERSE_SEARCH_JUMP_CMD" ] || [ -z "$POLL_PERIOD" ] || [ -z "$COORDINATEX_PID" ]; then
 	# Do NOT start search loop
 	FORWARD_SEARCH_LOOP_PID=""
 	echo "Forward search loop is DISABLED."
