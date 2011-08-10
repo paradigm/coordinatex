@@ -5,46 +5,49 @@
  Overview
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
- CoordinaTeX is a script which will assist the creation of TeX documents in
- several fashions:
+CoordinaTeX is a script which will assist the creation of TeX documents in
+several fashions:
 
- 1) It will automatically compile the TeX document when it changes, and if the
- compilation is successful it will tell the reader to refresh the document.
- If your editor is set to update sufficiently often, the effect should be to
- get a somewhat live update of the TeX document as it is being created.
+1) It will automatically compile the TeX document when it changes, and if the
+compilation is successful it will tell the reader to refresh the document.
+If your editor is set to update sufficiently often, the effect should be to
+get a somewhat live update of the TeX document as it is being created.
 
- 2) It will attempt to poll the text editor for the cursor position, and - if
- synctex or srctex is enabled - it will "forward-search"; that is, it will
- have the reader move to the appropriate part of the document.  If you are
- editing at the end of the document and jump to the beginning, the reader
- should also jump to the first page with you.
+2) It will attempt to poll the text editor for the cursor position, and - if
+synctex or srctex is enabled - it will "forward-search"; that is, it will
+have the reader move to the appropriate part of the document.  If you are
+editing at the end of the document and jump to the beginning, the reader
+should also jump to the first page with you.
 
- 3) Where possible, it will attempt to support reverse-searches as well; that
- is, the reader can tell the editor to jump to a position.  If you tell the
- reader you want to reverse-search to the line that created the title
- information, the editor will jump to \maketitle.
+3) Where possible, it will attempt to support reverse-searches as well; that
+is, the reader can tell the editor to jump to a position.  If you tell the
+reader you want to reverse-search to the line that created the title
+information, the editor will jump to \maketitle.
 
- 4) Should a compilation error arise, CoordinaTeX will update the contents of
- the reader with the TeX error information (as far as I know, this feature is
- unique to CoordinaTeX).
+4) Should a compilation error arise, CoordinaTeX will update the contents of
+the reader with the TeX error information (as far as I know, this feature is
+unique to CoordinaTeX).
 
- 5) If CoordinaTeX is not handed sufficient information directly, it will
- attempt to intelligently guess the missing options.  If only one ".tex"
- document appears in the directory CoordinaTeX is run in, only one ".pdf" or
- ".dvi" file exists in that directory, only one editor is running, and only
- one reader is running, CoordinaTeX will guess these options.
+5) If CoordinaTeX is not handed sufficient information directly, it will
+attempt to intelligently guess the missing options.  If only one ".tex"
+document appears in the directory CoordinaTeX is run in, only one ".pdf" or
+".dvi" file exists in that directory, only one editor is running, and only
+one reader is running, CoordinaTeX will guess these options.
 
- Moreover, CoordinaTeX will attempt to do these things in a flexible,
- extendable manner; if a given editor, output format or reader is not
- supported it should be easy to add it. (Feel free to upstream the additions
- back!)
+Moreover, CoordinaTeX will attempt to do these things in a flexible,
+extendable manner; if a given editor, output format or reader is not
+supported it should be easy to add it. (Feel free to upstream the additions
+back!)
 
- Currently supported editors:
- - vim
- Currently supported TeX compilation options:
- - latex with srcltx to DVI
- Currently supported readers:
- - xdvi
+* Currently supported editors:
+	- vim
+* Currently supported TeX compilation options:
+	- latex with srcltx to DVI
+	- latex with synctex to PDF
+* Currently supported readers:
+	- xdvi
+	- xpdf
+	- mupdf
 
 Eventually I'd like to add several more editors, readers and formats.
 
@@ -65,6 +68,8 @@ If you do not need forward searching, feel free to skip steps 1 and 2
  Changelog:
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
+* Version 1.0a3:
+	- Supports mupdf
 * Version 1.0a2:
 	- Supports xpdf
 * Version 1.0a1:
