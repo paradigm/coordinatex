@@ -65,6 +65,8 @@ If you do not need forward searching, feel free to skip steps 1 and 2
  Changelog:
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
+* Version 1.0a2:
+	- Supports xpdf
 * Version 1.0a1:
 	- Major cleanup work
 	- Improved automatic detection of various things
