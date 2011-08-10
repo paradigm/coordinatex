@@ -56,7 +56,7 @@ Eventually I'd like to add several more editors, readers and formats.
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
 1. Ensure you are using LaTeX, not Plain TeX or ConTeXt.
-2. Open the document in Vim  with a server name
+2. Open the document in Vim with a server name
 	(e.g.: vim --servername vimtex filename.tex)
 	(You can check the servername once in vim via :echo v:servername)
 3. Run coordinatex.  (See coordinatex -h for arguments)
