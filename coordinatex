@@ -362,8 +362,14 @@ if [ -z "$READER" ]; then
 		if ps cx | grep xpdf >/dev/null; then
 			READER=xpdf
 			LAUNCH_READER=""
+		elif ps cx | grep mupdf >/dev/null; then
+			READER=mupdf
+			LAUNCH_READER=""
 		elif which xpdf 1>/dev/null; then
 			READER=xpdf
+			LAUNCH_READER=1
+		elif which mupdf 1>/dev/null; then
+			READER=mupdf
 			LAUNCH_READER=1
 		fi
 	else
@@ -377,7 +383,7 @@ if [ -z "$READER" ]; then
 		echo "WARNING: No reader specified, guessing: $READER"
 	fi
 fi
-SUPPORTED_READERS="xdvi xpdf"
+SUPPORTED_READERS="xdvi xpdf mupdf"
 OKAY_READER=""
 for VAR in $SUPPORTED_READERS; do
 	if [ "$VAR" = "$READER" ]; then
@@ -482,12 +488,20 @@ case "$READER" in
 		fi
 		;;
 	xpdf )
-		READER_FORWARD_SEARCH_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE $(synctex view -i $CURSOR_POSITION:$INPUT_FILE -o $OUTPUT_FILE | awk -F: '"'"'/^Page:[0-9]/{print$2}'"') &"
+		READER_FORWARD_SEARCH_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE $(synctex view -i $CURSOR_POSITION:$INPUT_FILE -o $OUTPUT_FILE | awk -F: '"'"'/^Page:[0-9]/{print$2;exit}'"') &"
 		if [ "$SYNC_METHOD" = "srcltx" ]; then
 			echo "WARNING: xpdf forward search requires synctex, forward searching will be disabled."
 			READER_FORWARD_SEARCH_CMD=""
 		fi
 		echo "WARNING: xpdf does not support reverse seaching, reverse searching will be disabled."
+		;;
+	mupdf )
+		READER_FORWARD_SEARCH_CMD='xdotool type --window $(xwininfo -root -children | awk '"'"'/mupdf/{print$1}'"'"') $(synctex view -i $CURSOR_POSITION:$INPUT_FILE -o $OUTPUT_FILE | awk -F: '"'"'/^Page:[0-9]/{print$2;exit}'"')g"
+		if [ "$SYNC_METHOD" = "srcltx" ]; then
+			echo "WARNING: mupdf forward search requires synctex, forward searching will be disabled."
+			READER_FORWARD_SEARCH_CMD=""
+		fi
+		echo "WARNING: mupdf does not support reverse seaching, reverse searching will be disabled."
 		;;
 	* )
 		echo "ERROR: Hmm, shouldn't get here (READER_FORWARD_SEARCH_CMD).  Something is wrong.  Aborting."
@@ -503,7 +517,11 @@ case "$READER" in
 		RELOAD_READER_CMD='pkill -USR1 xdvi'
 		;;
 	xpdf )
-		RELOAD_READER_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE &'
+#		RELOAD_READER_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE &'
+		RELOAD_READER_CMD='xpdf -remote $READER_SERVER -reload &'
+		;;
+	mupdf )
+		RELOAD_READER_CMD='xdotool type --window $(xwininfo -root -children | awk '"'"'/mupdf/{print$1}'"'"') r'
 		;;
 	* )
 		echo "ERROR: Hmm, shouldn't get here (READER_RELOAD_CMD).  Something is wrong.  Aborting."
@@ -529,6 +547,9 @@ if [ ! -z $LAUNCH_READER ]; then
 			;;
 		xpdf )
 			LAUNCH_READER_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE &'
+			;;
+		mupdf )
+			RELOAD_READER_CMD='mupdf $OUTPUT_FILE'
 			;;
 		* )
 			echo "ERROR: Hmm, shouldn't get here (LAUNCH_READER_CMD).  Something is wrong.  Aborting."
