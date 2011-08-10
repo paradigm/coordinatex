@@ -27,14 +27,50 @@
 #  CoordinaTeX
 # ==============================================================================
 
-# CoordinaTeX is a script which will automate compilation of a TeX file and
-# forward searches (ie, having the output reader jump to the editor's cursor
-# position).  The effect should be to get a somewhat-live update of the TeX
-# document as it is being created without having to manually make any requests
-# for compilation or forward search syncing - just type your document and watch
-# the reader update live and follow your cursor.
+# CoordinaTeX is a script which will assist the creation of TeX documents in
+# several fashions:
+#
+# 1) It will automatically compile the TeX document when it changes, and if the
+# compilation is successful it will tell the reader to refresh the document.
+# If your editor is set to update sufficiently often, the effect should be to
+# get a somewhat live update of the TeX document as it is being created.
+#
+# 2) It will attempt to poll the text editor for the cursor position, and - if
+# synctex or srctex is enabled - it will "forward-search"; that is, it will
+# have the reader move to the appropriate part of the document.  If you are
+# editing at the end of the document and jump to the beginning, the reader
+# should also jump to the first page with you.
+#
+# 3) Where possible, it will attempt to support reverse-searches as well; that
+# is, the reader can tell the editor to jump to a position.  If you tell the
+# reader you want to reverse-search to the line that created the title
+# information, the editor will jump to \maketitle.
+#
+# 4) Should a compilation error arise, CoordinaTeX will update the contents of
+# the reader with the TeX error information (as far as I know, this feature is
+# unique to CoordinaTeX).
+#
+# 5) If CoordinaTeX is not handed sufficient information directly, it will
+# attempt to intelligently guess the missing options.  If only one ".tex"
+# document appears in the directory CoordinaTeX is run in, only one ".pdf" or
+# ".dvi" file exists in that directory, only one editor is running, and only
+# one reader is running, CoordinaTeX will guess these options.
+#
+# Moreover, CoordinaTeX will attempt to do these things in a flexible,
+# extendable manner; if a given editor, output format or reader is not
+# supported it should be easy to add it. (Feel free to upstream the additions
+# back!)
+#
+# Currently supported editors:
+# - vim
+# Currently supported TeX compilation options:
+# - latex with srcltx to DVI
+# Currently supported readers:
+# - xdvi
+#
+# There are plans for more!
 
-VERSION="0.2.1"
+VERSION="1.0a1"
 
 #  Functions
 # ==============================================================================
@@ -49,16 +85,16 @@ print_help() {
 	echo "usage: coordinatex [arguments]"
 	echo ""
 	echo "Arguments"
-	echo "  -h              Print this dialogue"
-	echo "  -i <filename>   TeX file to be edited and compiled"
-	echo "  -o <filename>   Output file name"
-	echo "  -e <editor>     Program to edit TeX file"
-	echo "  -r <reader>     Program to view compiled DVI or PDF"
-	echo "  -v <vimserver>  Vim's servername"
-	echo "  -c <compiler>   Name of compiler to use - pdftex, latex, etc"
-	echo "  -n <seconds>    Time to wait between checking for need to compile"
-	echo "  -p <seconds>    Time to wait between polling for editor cursor"
-	echo "  -z              When compile error, print error in reader"
+	echo "  -h                      Print this dialogue"
+	echo "  -i <filename>           Input TeX file"
+	echo "  -o <filename>           Output PDF or DVI file"
+	echo "  -e <editor>             Program to edit TeX file"
+	echo "  -r <reader>             Program to view compiled DVI or PDF"
+	echo "  -s <server_name>        Editor server name, where appropriate"
+	echo "  -c <compiler>           Name of compiler to use - pdftex, latex, etc"
+	echo "  -n inotify or <seconds> Time to wait between checking for need to compile"
+	echo "  -p <seconds>            Time to wait between polling for editor cursor"
+	echo "  -z                      When compile error, do NOT print error in reader"
 	echo ""
 	echo "If a required argument is left out, CoordinaTeX may pick it up from an"
 	echo "environmental variable (such as EDITOR) or try to guess the value by"
@@ -72,90 +108,106 @@ print_help() {
 
 quit() {
 	echo "Killing background functions..."
-	if kill $COMPILEPID; then
-		echo "Successfully stopped autocompiling loop"
+	if [ -z $COMPILE_LOOP_PID ]; then
+		echo "Compile loop should not be running, not killing."
 	else
-		echo "Expected to be able to kill autocompiling loop, but couldn't."
-		echo "Something could be wrong."
+		if kill $COMPILE_LOOP_PID 2>/dev/null; then
+			echo "Successfully stopped compile loop"
+		else
+			echo "Expected to be able to kill compile loop, but couldn't."
+			echo "Something could be wrong."
+		fi
 	fi
-	if kill $SEARCHPID; then
-		echo "Successfully stopped forwardsearch loop"
+	if [ -z $FORWARD_SEARCH_LOOP_PID ]; then
+		echo "Forward search loop should not be running, not killing."
 	else
-		echo "Expected to be able to kill autocompiling loop, but couldn't."
-		echo "Something could be wrong."
+		if kill $FORWARD_SEARCH_LOOP_PID 2>/dev/null; then
+			echo "Successfully stopped forward search loop"
+		else
+			echo "Expected to be able to kill forward search loop, but couldn't."
+			echo "Something could be wrong."
+		fi
 	fi
-	echo "Successfully closed all background loops, quitting"
-	exit
+	if [ -f coordinatex_compile_output ]; then
+		echo "Removing temporary compile output file..."
+		rm coordinatex_compile_output
+	fi
+	if [ -f coordinatex_error.tex ]; then
+		echo "Removing temporary compile error file..."
+		rm coordinatex_error.tex
+	fi
+	echo "Finished cleaning up, exiting."
+	exit 0
 }
 
 
-#  Automatically compile INFILE whenever it changes
+#  Automatically compile INPUT_FILE whenever it changes
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
-autocompile() {
+compile_loop() {
 	# Ensure variables have been set
-	if [ -z "$COMPILECMD" ] || [ -z "$COMPILEPERIOD" ] || [ -z "$RELOADREADER" ] || [ -z "$ERRORCMD" ] || [ -z "$INFILE" ] || [ -z "$OUTFILE" ] || [ -z "$COORDINATEXPID" ]; then
-		echo "ERROR: autocompile() doesn't see all the needed variables, something is wrong.  Aborting."
+	if [ -z "$COMPILE_CMD" ] || [ -z "$COMPILE_PERIOD" ] || [ -z "$RELOAD_READER_CMD" ] || [ -z "$SHOW_COMPILE_ERROR_CMD" ] || [ -z "$INPUT_FILE" ] || [ -z "$OUTPUT_FILE" ] || [ -z $COORDINATEX_PID ]; then
+		echo "ERROR: compile_loop() doesn't see all the needed variables, something is wrong.  Aborting."
 		exit 1
 	fi
 
-	# While INFILE is available, keep checking if need to compile
-	OLDMD5=""
-	while true; do
-		# check to see if file changed
-		MD5=$(md5sum "$INFILE" 2>/dev/null)
-		if [ "$MD5" != "$OLDMD5" ]; then
-			if eval $COMPILECMD > coordinatex_compile_output; then
-				eval $RELOADREADER
+	# Continuously check if need to compile
+	OLD_MD5=""
+	while true ; do
+		# check to see if the file changed
+		MD5=$(md5sum "$INPUT_FILE" 2>/dev/null)
+		if [ "$MD5" != "$OLD_MD5" ]; then
+			if eval $COMPILE_CMD > coordinatex_compile_output; then
+				eval $RELOAD_READER_CMD
 				if [ -f coordinatex_error.tex ]; then
 					rm coordinatex_error.tex 2>/dev/null
 				fi
 			else
-				if [ -z $READERSHOWERROR ]; then
-					echo '\documentclass{article}\usepackage{srcltx}\\begin{document}\\noindent' > coordinatex_error.tex
-					sed -e 's,\\,\\textbackslash ,g' -e 's,$,\\\\,g' -e 's,\(\[\|\]\|<\|>\),\$&\$,g' coordinatex_compile_output >> coordinatex_error.tex
+				if [ -z $READER_SHOW_ERROR ]; then
+					echo '\documentclass{article}' > coordinatex_error.tex
+					echo $(awk '/\\usepackage{srcltx}/{SRCLTXLINE=NR}/\\begin{document}/{BEGINDOCLINE=NR}END{if(SRCLTXLINE!="" && SRCLTXLINE<BEGINDOCLINE){print "\\usepackage{srcltx}"}}' $INPUT_FILE) >> coordinatex_error.tex
+					echo '\begin{document}\noindent' >> coordinatex_error.tex
+					sed -e 's,\\,\\textbackslash{},g' -e 's,$,\\\\,g' -e 's,\(\[\|\]\|<\|>\),\$&\$,g' coordinatex_compile_output >> coordinatex_error.tex
 					echo '\n\end{document}' >> coordinatex_error.tex
-					if eval $ERRORCMD 1>/dev/null; then
-						#cp coordinatex_error.dvi $OUTFILE
-						eval $RELOADREADER
+					if eval $SHOW_COMPILE_ERROR_CMD 1>/dev/null; then
+						eval $RELOAD_READER_CMD
 					else
-						exit 1
+						echo "ERROR: Error creating error for reader to show"
 					fi
 				fi
 			fi
-			OLDMD5=$MD5
 		fi
-		if which inotifywait >/dev/null; then 
-			inotifywait -qq $INFILE
+		if [ "$COMPILE_PERIOD" = "inotify" ]; then
+			inotifywait "$INPUT_FILE" >/dev/null
 		else
-			sleep $COMPILEPERIOD
+			sleep $COMPILE_PERIOD
 		fi
 	done
 	echo "ERROR: Hmm, shouldn't get here.  Something is wrong.  Aborting."
-	kill $COORDINATEXPID
+	kill $COORDINATEX_PID
 }
 
 #  Automatically poll for EDITOR cursor position and pass to READER
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
-forwardsearch() {
+forward_search_loop() {
 	# Ensure variables have been set
-	if [ -z "$POLLEDITOR" ] || [ -z "$CALLREADER" ] || [ -z "$POLLPERIOD" ]; then
-		echo "ERROR: forwardsearch() doesn't see all the needed variables, something is wrong.  Aborting."
+	if [ -z "$FORWARD_SEARCH_POLL_EDITOR_CMD" ] || [ -z "$READER_FORWARD_SEARCH_CMD" ] || [ -z "$POLL_PERIOD" ]; then
+		echo "ERROR: forward_search_loop() doesn't see all the needed variables, something is wrong.  Aborting."
 		exit 1
 	fi
 
 	# Keep polling for cursor position
-	OLDCURSORPOS=""
+	OLD_CURSOR_POSITION=""
 	while true; do
 		if [ ! -f coordinatex_error.tex ]; then
-			CURSORPOS=$(eval $POLLEDITOR)
-			if [ "$CURSORPOS" != "$OLDCURSORPOS" ]; then
-				eval $CALLREADER 2>/dev/null
-				OLDCURSORPOS=$CURSORPOS
+			CURSOR_POSITION=$(eval $FORWARD_SEARCH_POLL_EDITOR_CMD)
+			if [ "$CURSOR_POSITION" != "$OLD_CURSOR_POSITION" ]; then
+				eval $READER_FORWARD_SEARCH_CMD 2>/dev/null
+				OLD_CURSOR_POSITION=$CURSOR_POSITION
 			fi
 		fi
-		sleep $POLLPERIOD
+		sleep $POLL_PERIOD
 	done
 }
 
@@ -166,56 +218,87 @@ forwardsearch() {
 echo "Starting CoordinaTeX $VERSION"
 
 
+#  Clean up previous run, if necessary
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+if [ -f coordinatex_compile_output ]; then
+	echo "Removing temporary compile output file..."
+	rm coordinatex_compile_output
+fi
+if [ -f coordinatex_error.tex ]; then
+	echo "Removing temporary compile error file..."
+	rm coordinatex_error.tex
+fi
+
 #  Parse arguments
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
-COORDINATEXPID=$$
-INFILE=""
-OUTFILE=""
-EDITOR=""
-READER=""
-VIMSERVER=""
-READERSHOWERROR=""
-while getopts ":hi:o:e:v:r:" OPT; do
+while getopts ":hi:o:e:r:v:c:n:p:z" OPT; do
 	case "$OPT" in
-		h | [?] ) print_help ;;
-		i) INFILE="$OPTARG" ;;
-		o) OUTFILE="$OPTARG" ;;
-		e) EDITOR="$OPTARG" ;;
-		r) READER="$OPTARG" ;;
-		v) VIMSERVER="$OPTARG" ;;
-		c) TEXCOMPILER="$OPTARG";;
-		n) COMPILEPERIOD="$OPTARG";;
-		p) POLLPERIOD="$OPTARG";;
-		z) READERSHOWERROR=1;;
+		h | [?] ) print_help;;
+		i) INPUT_FILE="$OPTARG";;
+		o) OUTPUT_FILE="$OPTARG";;
+		e) EDITOR="$OPTARG";;
+		r) READER="$OPTARG";;
+		s) EDITOR_SERVER="$OPTARG";;
+		c) TEX_COMPILER="$OPTARG";;
+		n) COMPILE_PERIOD="$OPTARG";;
+		p) POLL_PERIOD="$OPTARG";;
+		z) READER_SHOW_ERROR=1;;
 	esac
 done
-
 
 #  Ensure required arguments were met, or warn about guesses
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
-#  Check for INFILE
+
+#  Check for INPUT_FILE
 # .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
-if [ -z "$INFILE" ]; then
-	if [ $(ls | grep -v "^coordinatex_error[.]tex" | grep -c "[.]tex$" ) -eq 1 ]; then
-		INFILE=$(ls | grep -v "^coordinatex_error[.]tex" | grep ".tex$")
-		echo "WARNING: No infile specified, guessing $INFILE"
+if [ -z "$INPUT_FILE" ]; then
+	if [ $(ls | grep -v "^coordinatex_error\.tex$" | grep -c "\.tex$") -eq 1 ]; then
+		INPUT_FILE=$(ls | grep -v "^coordinatex_error\.tex$" | grep "\.tex$")
+		echo "WARNING: No input file specified, guessing $INPUT_FILE"
 	else
-		echo "ERROR: Must provide a TeX filename (to be edited and compiled)"
+		echo "ERROR: No TeX filename specified, cannot guess, aborting."
 		exit 1
 	fi
 fi
-if [ ! -f "$INFILE" ]; then
-	echo "ERROR: Cannot find the file '$INFILE'"
-	exit 1
+if [ ! -f "$INPUT_FILE" ]; then
+	echo "ERROR: Can not find the file '$INPUT_FILE'"
 fi
 
-#  Check for OUTFILE
+#  Check for OUTPUT_FILE
 # .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
-if [ -z "$OUTFILE" ]; then
-	OUTFILE=$(echo $INFILE | sed 's/\(.*\).tex$/\1/')".dvi"
-	echo "WARNING: No outfile specified, guessing: $OUTFILE"
+if [ -z "$OUTPUT_FILENAME" ]; then
+	if [ -z "$TEX_COMPILER" ]; then
+		if ls -1 | grep "\.dvi$" 1>/dev/null && ! ls -1 | grep "\.pdf$" 1>/dev/null; then
+			TEX_COMPILER="latex"
+			echo "WARNING: No TeX compiler specified, guessing: $TEX_COMPILER"
+		elif ! ls -1 | grep "\.dvi$" 1>/dev/null && ls -1 | grep "\.pdf$" 1>/dev/null; then
+			TEX_COMPILER="pdflatex"
+			echo "WARNING: No TeX compiler specified, guessing: $TEX_COMPILER"
+		else
+			echo "ERROR: No TeX compiler or output filename given, cannot guess, aborting."
+			exit 1
+		fi
+	fi
+	if [ "$TEX_COMPILER" = "latex" ]; then
+		OUTPUT_FILE=$(echo $INPUT_FILE | sed 's/\(.*\)[.]tex$/\1.dvi/')
+		echo "WARNING: No output file specified, guessing $OUTPUT_FILE"
+	elif [ "$TEX_COMPILER" = "pdflatex" ]; then
+		OUTPUT_FILE=$(echo $INPUT_FILE | sed 's/\(.*\)[.]tex$/\1.pdf/')
+		echo "WARNING: No output file specified, guessing $OUTPUT_FILE"
+	else
+		echo "ERROR: No output file specified, cannot guess, aborting."
+		exit 1
+	fi
+fi
+
+#  Check for TEX_COMPILER
+# .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
+if [ -z "$TEX_COMPILER" ]; then
+	echo "ERROR: No TeX compiler specified, cannot guess, aborting."
+	exit 1
 fi
 
 #  Check for EDITOR
@@ -235,38 +318,47 @@ if [ -z "$EDITOR" ]; then
 		echo "WARNING: No editor specified, guessing: $EDITOR"
 	fi
 fi
-SUPPORTEDEDITORS="vim"
-OKAYEDITOR=""
-for VAR in $SUPPORTEDEDITORS; do
+SUPPORTED_EDITORS="vim"
+OKAY_EDITOR=""
+for VAR in $SUPPORTED_EDITORS; do
 	if [ "$VAR" = "$EDITOR" ]; then
-		OKAYEDITOR=1
+		OKAY_EDITOR=1
 	fi
 done
-if [ -z $OKAYEDITOR ]; then
+if [ -z $OKAY_EDITOR ]; then
 	echo "ERROR: The editor '$EDITOR' is not currently supported."
 	echo "Please select another editor with the -e option"
-	echo "Currently supported editors are: $SUPPORTEDEDITORS"
+	echo "Currently supported editors are: $SUPPORTED_EDITORS"
 	exit 1
 fi
-if  [ -z "$VIMSERVER" ] && [ "$EDITOR" = "vim" ]; then
+if  [ -z "$EDITOR_SERVER" ] && [ "$EDITOR" = "vim" ]; then
 	if [ $(vim --serverlist | wc -l) -eq 1 ]; then
-		VIMSERVER=$(vim --serverlist)
-		echo "WARNING: No vim server specified, guessing: $VIMSERVER"
+		EDITOR_SERVER=$(vim --serverlist)
+		echo "WARNING: No vim server specified, guessing: $EDITOR_SERVER"
 	else
-		echo "ERROR: When using vim, must provide a vimserver name."
-		echo "Could not guess the vim servername, aborting."
+		echo "WARNING: No vim server given, cannot guess; forward searching will be disabled"
 		echo "See vim's \":help clientserver\""
-		exit 1
 	fi
 fi
 
 #  Check for READER
 # .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 if [ -z "$READER" ]; then
-	if ps cx | grep xdvi >/dev/null; then
-		READER=xdvi
-	elif ps cx | grep evince >/dev/null; then
-		READER=evince
+	if [ "$TEX_COMPILER" = "latex" ]; then
+		if ps cx | grep xdvi >/dev/null; then
+			READER=xdvi
+		elif which xdvi 1>/dev/null; then
+			READER=xdvi
+		fi
+	elif [ "$TEX_COMPILER" = "pdflatex" ]; then
+		if ps cx | grep xpdf >/dev/null; then
+			READER=xpdf
+		elif which xpdf 1>/dev/null; then
+			READER=xpdf
+		fi
+	else
+		echo "ERROR: Hmm, shouldn't get here.  Something is wrong.  Aborting."
+		exit 1
 	fi
 	if [ -z "$READER" ]; then
 		echo "ERROR: No reader specified, cannot guess, aborting"
@@ -275,39 +367,36 @@ if [ -z "$READER" ]; then
 		echo "WARNING: No reader specified, guessing: $READER"
 	fi
 fi
-SUPPORTEDREADERS="xdvi"
-OKAYREADER=""
-for VAR in $SUPPORTEDREADERS; do
+SUPPORTED_READERS="xdvi"
+OKAY_READER=""
+for VAR in $SUPPORTED_READERS; do
 	if [ "$VAR" = "$READER" ]; then
-		OKAYREADER=1
+		OKAY_READER=1
 	fi
 done
-if [ -z $OKAYREADER ]; then
+if [ -z $OKAY_READER ]; then
 	echo "ERROR: The reader '$READER' is not currently supported."
 	echo "Please select another reader with the -r option"
-	echo "Currently supported readers are: $SUPPORTEDREADERS"
+	echo "Currently supported readers are: $SUPPORTED_READERS"
 	exit 1
 fi
 
-#  Check for TEXCOMPILER
+#  Check for COMPILE_PERIOD
 # .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
-if [ -z "$TEXCOMPILER" ]; then
-	TEXCOMPILER="latex"
-	echo "WARNING: No TeX compiler specified, defaulting to: $TEXCOMPILER"
-fi
-
-#  Check for COMPILEPERIOD
-# .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
-if [ -z "$COMPILEPERIOD" ]; then
-	COMPILEPERIOD="1"
-	echo "WARNING: No delay between file change specified, defaulting to: $COMPILEPERIOD second(s)"
+if [ -z "$COMPILE_PERIOD" ]; then
+	if which inotifywait >/dev/null; then
+		COMPILE_PERIOD="inotify"
+	else
+		COMPILE_PERIOD="1"
+	fi
+	echo "WARNING: No delay between file change specified, defaulting to: $COMPILE_PERIOD"
 fi
 
 #  Check for POLLPERIOD
 # .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
-if [ -z "$POLLPILEPERIOD" ]; then
-	POLLPERIOD=".2"
-	echo "WARNING: No delay between cursor position polling specified, defaulting to: $POLLPERIOD second(s)"
+if [ -z "$POLL_PERIOD" ]; then
+	POLL_PERIOD=".2"
+	echo "WARNING: No delay between cursor position polling specified, defaulting to: $POLL_PERIOD"
 fi
 
 #  Set needed values to be evaluated in the loops
@@ -318,7 +407,12 @@ fi
 
 case "$EDITOR" in
 	vim )
-		POLLEDITOR='vim --servername "$VIMSERVER" --remote-expr '\''line(".").":".col(".")'\'
+		if [ -z $EDITOR_SERVER ]; then
+			FORWARD_SEARCH_POLL_EDITOR_CMD=""
+			echo "WARNING: Can't find prerequisites for forward-searching, it will be disabled"
+		else
+			FORWARD_SEARCH_POLL_EDITOR_CMD='vim --servername "$EDITOR_SERVER" --remote-expr '\''line(".").":".col(".")'\'
+		fi
 		;;
 	* )
 		echo "ERROR: Hmm, shouldn't get here.  Something is wrong.  Aborting."
@@ -326,41 +420,52 @@ case "$EDITOR" in
 		;;
 esac
 
-
 #  Set how to inform EDITOR of reverse search
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+# .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 
 case "$EDITOR" in
 	vim )
-		CALLEDITOR="vim --servername \"$VIMSERVER\" --remote +$LINE $INFILE"
+		if [ -z $EDITOR_SERVER ]; then
+			REVERSE_SEARCH_JUMP_CMD=""
+			echo "WARNING: Can't find prerequisites for reverse-searching, it will be disabled"
+		else
+			REVERSE_SEARCH_JUMP_CMD="vim --servername \"$EDITOR_SERVER\" --remote +$LINE $INPUT_FILE"
+		fi
 		;;
 	* )
 		echo "ERROR: Hmm, shouldn't get here.  Something is wrong.  Aborting."
 		exit 1
 		;;
 esac
-
 
 #  Set how to inform READER of forward search
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+# .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 
 case "$READER" in
 	xdvi )
-		CALLREADER='xdvi -editor "$CALLEDITOR"  -sourceposition "$CURSORPOS $INFILE" "$OUTFILE"'
+		READER_FORWARD_SEARCH_CMD='xdvi'
+		if [ ! -z "$REVERSE_SEARCH_JUMP_CMD" ]; then
+			READER_FORWARD_SEARCH_CMD="$READER_FORWARD_SEARCH_CMD"' -editor "$REVERSE_SEARCH_JUMP_CMD"'
+		fi
+		READER_FORWARD_SEARCH_CMD="$READER_FORWARD_SEARCH_CMD"' -sourceposition "$CURSOR_POSITION $INPUT_FILE"'" $OUTPUT_FILE"
+		SRCLTX_ENABLED=$(awk '/\\usepackage{srcltx}/{SRCLTXLINE=NR}/\\begin{document}/{BEGINDOCLINE=NR}END{if(SRCLTXLINE!="" && SRCLTXLINE<BEGINDOCLINE){print "srcltx"}}' $INPUT_FILE)
+		if [ "$SRCLTX_ENABLED" = "" ]; then
+			echo "WARNING: No srcltx, forward searching will be disabled."
+			READER_FORWARD_SEARCH_CMD=""
+		fi
 		;;
 	* )
 		echo "ERROR: Hmm, shouldn't get here.  Something is wrong.  Aborting."
 		exit 1
 		;;
 esac
-
 
 #  Set how to tell READER to reload document
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+# .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 
 case "$READER" in
 	xdvi )
-		RELOADREADER='pkill -USR1 xdvi'
+		RELOAD_READER_CMD='pkill -USR1 xdvi'
 		;;
 	* )
 		echo "ERROR: Hmm, shouldn't get here.  Something is wrong.  Aborting."
@@ -368,14 +473,15 @@ case "$READER" in
 		;;
 esac
 
-
 #  Set command to compile TeX document
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+# .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 
-case "$TEXCOMPILER" in
+case "$TEX_COMPILER" in
 	latex )
-		COMPILECMD='latex -interaction=nonstopmode "$INFILE"'
-		ERRORCMD='latex -jobname='$(echo $INFILE | sed 's/.tex$//g')' -interaction=nonstopmode coordinatex_error.tex'
+		COMPILE_CMD='latex -interaction=nonstopmode "$INPUT_FILE"'
+		if [ -z $READER_SHOW_ERROR ]; then
+			SHOW_COMPILE_ERROR_CMD='latex -jobname='$(echo $INPUT_FILE | sed 's/[.]tex$//g')' -interaction=nonstopmode coordinatex_error.tex'
+		fi
 		;;
 	* )
 		echo "ERROR: Hmm, shouldn't get here.  Something is wrong.  Aborting."
@@ -386,21 +492,37 @@ esac
 #  Main looping starts here
 # ==============================================================================
 
+COORDINATEX_PID=$$
 
 # Don't want to close without cleaning up
 trap quit HUP INT TERM
 
-#  Start autocompile loop
+
+#  Start compile loop
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
-autocompile &
-COMPILEPID=$!
+if [ -z "$COMPILE_CMD" ] || [ -z "$COMPILE_PERIOD" ] || [ -z "$INPUT_FILE" ] || [ -z "$OUTPUT_FILE" ]; then
+	COMPILE_LOOP_PID=""
+	echo "Compile loop is DISABLED."
+else
+	echo "Starting compile loop."
+	compile_loop &
+	COMPILE_LOOP_PID=$!
+fi
 
-#  Start autocompile loop
+#  Start forward search loop
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
-forwardsearch &
-SEARCHPID=$!
+if [ -z "$READER_FORWARD_SEARCH_CMD" ] || [ -z "$FORWARD_SEARCH_POLL_EDITOR_CMD" ] || [ -z "$REVERSE_SEARCH_JUMP_CMD" ] || [ -z "$POLL_PERIOD" ]; then
+	# Do NOT start search loop
+	FORWARD_SEARCH_LOOP_PID=""
+	echo "Forward search loop is DISABLED."
+else
+	# Start search loop
+	echo "Starting forward search."
+	forward_search_loop &
+	FORWARD_SEARCH_LOOP_PID=$!
+fi
 
 #  Wait for indication from user to quit
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
