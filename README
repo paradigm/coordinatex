@@ -5,32 +5,69 @@
  Overview
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
-CoordinaTeX is a shell script which automates coordination between a TeX editor
-and the program which views its output.  The idea is to get something close to
-a live update of what the TeX document looks like while editing it.
+ CoordinaTeX is a script which will assist the creation of TeX documents in
+ several fashions:
 
-Currently supported:
+ 1) It will automatically compile the TeX document when it changes, and if the
+ compilation is successful it will tell the reader to refresh the document.
+ If your editor is set to update sufficiently often, the effect should be to
+ get a somewhat live update of the TeX document as it is being created.
 
-	- Editors: Vim (with +clientserver)
-	- Output readers: xdvi
-	- Output formats: LaTeX with srcltx
+ 2) It will attempt to poll the text editor for the cursor position, and - if
+ synctex or srctex is enabled - it will "forward-search"; that is, it will
+ have the reader move to the appropriate part of the document.  If you are
+ editing at the end of the document and jump to the beginning, the reader
+ should also jump to the first page with you.
+
+ 3) Where possible, it will attempt to support reverse-searches as well; that
+ is, the reader can tell the editor to jump to a position.  If you tell the
+ reader you want to reverse-search to the line that created the title
+ information, the editor will jump to \maketitle.
+
+ 4) Should a compilation error arise, CoordinaTeX will update the contents of
+ the reader with the TeX error information (as far as I know, this feature is
+ unique to CoordinaTeX).
+
+ 5) If CoordinaTeX is not handed sufficient information directly, it will
+ attempt to intelligently guess the missing options.  If only one ".tex"
+ document appears in the directory CoordinaTeX is run in, only one ".pdf" or
+ ".dvi" file exists in that directory, only one editor is running, and only
+ one reader is running, CoordinaTeX will guess these options.
+
+ Moreover, CoordinaTeX will attempt to do these things in a flexible,
+ extendable manner; if a given editor, output format or reader is not
+ supported it should be easy to add it. (Feel free to upstream the additions
+ back!)
+
+ Currently supported editors:
+ - vim
+ Currently supported TeX compilation options:
+ - latex with srcltx to DVI
+ Currently supported readers:
+ - xdvi
 
 Eventually I'd like to add several more editors, readers and formats.
+
 
  How to use (at the moment):
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
-1. Ensure your LaTeX document uses the srcltx package, \usepackage{srcltx}
+If you do not need forward searching, feel free to skip steps 1 and 2
+
+1. ensure your document is LaTeX with the srcltx package, \usepackage{srcltx}
 2. Open the document in Vim  with a server name
 	(e.g.: vim --servername vimtex filename.tex)
-	2b. You can check the servername once in vim via :echo v:servername<CR>
+	(You can check the servername once in vim via :echo v:servername)
 3. Run coordinatex.  (See coordinatex -h for arguments)
-4. When you're done, switch to coordinatex and hit ENTER (or ctrl-c)
+4. When you're done, switch to coordinatex and hit ctrl-c
 
 
  Changelog:
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
+* Version 1.0a1:
+	- Major cleanup work
+	- Improved automatic detection of various things
 * Version 0.2.2:
 	- Changed ctrl-c sleep time to fix another bug
 * Version 0.2.1:
@@ -48,6 +85,7 @@ Eventually I'd like to add several more editors, readers and formats.
 * Version 0.1:
 	- Works for a very specifc situation.
 	- Messy
+
 
  To do:
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
@@ -67,10 +105,6 @@ Eventually I'd like to add several more editors, readers and formats.
 	- Mac-specific reader? (Preview?)
 	- BSD-specific reader?
 	- Solaris-specific reader?
-- Windows stuff?
-	- Cygwin?
-	- Batch script?
-	- Powershell?
 - Heavily comment source code
 - Support handling non-main/inputted TeX files
 - Support TeX/LaTeX/ConTeXt with all of their supported output formats
