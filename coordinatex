@@ -423,7 +423,7 @@ fi
 #  Check for SYNC_METHOD
 # .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  
 if [ -z "$SYNC_METHOD" ]; then
-	SYNC_METHOD=$(awk '/$[^%]*\\usepackage{srcltx}/{SRCLTXLINE=NR}/%[^%]*\\begin{document}/{BEGINDOCLINE=NR}END{if(SRCLTXLINE!="" && SRCLTXLINE<BEGINDOCLINE){print "srcltx"}else{print "synctex"}}' $INPUT_FILE)
+	SYNC_METHOD=$(awk '/^[^%]*\\usepackage{srcltx}/{SRCLTXLINE=NR}/^[^%]*\\begin{document}/{BEGINDOCLINE=NR}END{if(SRCLTXLINE!="" && SRCLTXLINE<BEGINDOCLINE){print "srcltx"}else{print "synctex"}}' $INPUT_FILE)
 	echo "WARNING: No sync method specified, guessing: $SYNC_METHOD"
 fi
 
@@ -522,9 +522,9 @@ if [ ! -z $LAUNCH_READER ]; then
 				LAUNCH_READER_CMD="$LAUNCH_READER_CMD"' -editor "$REVERSE_SEARCH_JUMP_CMD"'
 			fi
 			if [ "$SYNC_METHOD" = "srcltx" ]; then
-				LAUNCH_READER_CMD="$LAUNCH_READER_CMD"' -sourceposition "$CURSOR_POSITION $INPUT_FILE"'" $OUTPUT_FILE"
+				LAUNCH_READER_CMD="$LAUNCH_READER_CMD"' -sourceposition "$CURSOR_POSITION $INPUT_FILE"'" $OUTPUT_FILE &"
 			else
-				LAUNCH_READER_CMD="$LAUNCH_READER_CMD $OUTPUT_FILE"
+				LAUNCH_READER_CMD="$LAUNCH_READER_CMD $OUTPUT_FILE &"
 			fi
 			;;
 		xpdf )
@@ -589,6 +589,7 @@ trap quit HUP INT TERM
 
 
 if [ ! -z $LAUNCH_READER ]; then
+	echo $LAUNCH_READER_CMD
 	eval $LAUNCH_READER_CMD 2>/dev/null
 	# If launching a new reader, give it a couple seconds to launch before starting other loops
 	echo "Giving $READER a couple seconds to launch..."
