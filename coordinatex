@@ -482,7 +482,7 @@ case "$READER" in
 		fi
 		;;
 	xpdf )
-		READER_FORWARD_SEARCH_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE $(synctex view -i $CURSOR_POSITION:$INPUT_FILE -o $OUTPUT_FILE | awk -F: '"'"'/^Page:[0-9]/{print$2}'"')"
+		READER_FORWARD_SEARCH_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE $(synctex view -i $CURSOR_POSITION:$INPUT_FILE -o $OUTPUT_FILE | awk -F: '"'"'/^Page:[0-9]/{print$2}'"') &"
 		if [ "$SYNC_METHOD" = "srcltx" ]; then
 			echo "WARNING: xpdf forward search requires synctex, forward searching will be disabled."
 			READER_FORWARD_SEARCH_CMD=""
@@ -503,7 +503,7 @@ case "$READER" in
 		RELOAD_READER_CMD='pkill -USR1 xdvi'
 		;;
 	xpdf )
-		RELOAD_READER_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE'
+		RELOAD_READER_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE &'
 		;;
 	* )
 		echo "ERROR: Hmm, shouldn't get here (READER_RELOAD_CMD).  Something is wrong.  Aborting."
