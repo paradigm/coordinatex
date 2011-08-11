@@ -44,5 +44,7 @@ supported it should be easy to add it.
 
 * Version 2.0a1:
 	- Major redesign
-		- Will support both pushing and pulling cursor position (some editors,
-		  such as gedit, don't seem to have a way to poll for cursor position)
+		- Internally more organized
+		- Will support both pushing and pulling cursor position
+		- Will support both pushing and pulling for save/compile time
+		- Will keep temporary files out of working directory

@@ -61,4 +61,487 @@
 # supported it should be easy to add it.
 
 VERSION="2.0a1"
+SUPPORTED_EDITORS="vim emacs gedit"
+SUPPORTED_READERS="xdvi xpdf mupdf"
+SUPPORTED_COMPILERS="latex pdflatex"
+
+# Need to determine temporary directory before we can do much else
+# If /dev/shm/ (typically a ramdisk) is available, save temporary CoordinaTeX
+# information there Otherwise, put temporary CoordinaTeX information in /tmp
+if [ -w /dev/shm/ ]; then
+	TEMPORARY_DIRECTORY="/dev/shm/.coordinatex-$(whoami)"
+else
+	TEMPORARY_DIRECTORY="/tmp/.coordinatex-$(whoami)"
+fi
+
+#  Functions
+# ==============================================================================
+
+new_session(){
+	if [ -f $TEMPORARY_DIRECTORY/lock ]; then
+		echo "Looks like CoordinaTeX is already running."
+		echo "Try killing it with \`coordinatex quit\`"
+		echo "Or, if you're sure it's not running, delete the file $TEMPORARY_DIRECTORY/lock"
+		echo "Then run again"
+		exit 2
+	fi
+	# Create temporary directory or clear out old one
+	if [ ! -e $TEMPORARY_DIRECTORY ]; then
+		mkdir $TEMPORARY_DIRECTORY
+	elif [ -f $TEMPORARY_DIRECTORY/* ]; then
+		rm $TEMPORARY_DIRECTORY/*
+	fi
+	if ! touch $TEMPORARY_DIRECTORY/lock; then
+		echo "ERROR: Couldn't write to $TEMPORARY_DIRECTORY"
+		exit 3
+	fi
+	# Save information for push threads to access
+	echo "INPUT_FILE:                      $INPUT_FILE"                      >> $TEMPORARY_DIRECTORY/information
+	echo "OUTPUT_FILE:                     $OUTPUT_FILE"                     >> $TEMPORARY_DIRECTORY/information
+	echo "EDITOR:                          $EDITOR"                          >> $TEMPORARY_DIRECTORY/information
+	echo "EDITOR_SERVER:                   $EDITOR_SERVER"                   >> $TEMPORARY_DIRECTORY/information
+	echo "CURSOR_PUSHPULL:                 $CURSOR_PUSHPULL"                 >> $TEMPORARY_DIRECTORY/information
+	echo "CURSOR_PULL_CMD:                 $CURSOR_PULL_CMD"                 >> $TEMPORARY_DIRECTORY/information
+	echo "CURSOR_PULL_DELAY:               $CURSOR_PULL_DELAY"               >> $TEMPORARY_DIRECTORY/information
+	echo "REVERSE_SEARCH_EDITOR_JUMP_CMD:  $REVERSE_SEARCH_EDITOR_JUMP_CMD"  >> $TEMPORARY_DIRECTORY/information
+	echo "READER:                          $READER"                          >> $TEMPORARY_DIRECTORY/information
+	echo "READER_SERVER:                   $READER_SERVER"                   >> $TEMPORARY_DIRECTORY/information
+	echo "READER_RELOAD_CMD:               $READER_RELOAD_CMD"               >> $TEMPORARY_DIRECTORY/information
+	echo "FORWARD_SEARCH_READER_JUMP_CMD:  $FORWARD_SEARCH_READER_JUMP_CMD"  >> $TEMPORARY_DIRECTORY/information
+	echo "COMPILE_PUSHPULL:                $COMPILE_PUSHPULL"                >> $TEMPORARY_DIRECTORY/information
+	echo "COMPILER:                        $COMPILER"                        >> $TEMPORARY_DIRECTORY/information
+	echo "SYNC_METHOD:                     $SYNC_METHOD"                     >> $TEMPORARY_DIRECTORY/information
+	echo "COMPILE_CMD:                     $COMPILE_CMD"                     >> $TEMPORARY_DIRECTORY/information
+	echo "COMPILE_ERROR_SHOW_CMD:          $COMPILE_ERROR_SHOW_CMD"          >> $TEMPORARY_DIRECTORY/information
+	echo "COMPILE_PULL_DELAY:              $COMPILE_PULL_DELAY"              >> $TEMPORARY_DIRECTORY/information
+	echo "ATTEMPT_FORWARD_SEARCH:          $ATTEMPT_FORWARD_SEARCH"          >> $TEMPORARY_DIRECTORY/information
+	echo "ATTEMPT_REVERSE_SEARCH:          $ATTEMPT_REVERSE_SEARCH"          >> $TEMPORARY_DIRECTORY/information
+	echo "LAUNCH_READER:                   $LAUNCH_READER"                   >> $TEMPORARY_DIRECTORY/information
+	echo "READER_SHOW_ERROR:               $READER_SHOW_ERROR"               >> $TEMPORARY_DIRECTORY/information
+
+	echo "\nRunning with these settings:"
+	cat $TEMPORARY_DIRECTORY/information
+	echo ""
+
+	# Don't want to close without cleaning up
+	trap quit HUP INT TERM
+
+	if [ "$LAUNCH_READER" = "YES" ]; then
+		echo -n "Launching $READER... "
+		launch_reader &
+		echo "done."
+	fi
+	if [ "$CURSOR_PUSHPULL" = "PULL" ]; then
+		echo -n "Starting cursor pull loop... "
+		cursor_pull_loop &
+		CURSOR_PULL_LOOP_PID=$!
+		echo "CURSOR_PULL_LOOP_PID:            $CURSOR_PULL_LOOP_PID"            >> $TEMPORARY_DIRECTORY/information
+		echo "PID=$CURSOR_PULL_LOOP_PID"
+	fi
+	if [ "$COMPILE_PUSHPULL" = "PULL" ]; then
+		echo -n "Starting compile pull loop... "
+		compile_pull_loop &
+		COMPILE_PULL_LOOP_PID=$!
+		echo "COMPILE_PULL_LOOP_PID:           $COMPILE_PULL_LOOP_PID"           >> $TEMPORARY_DIRECTORY/information
+		echo "PID=$COMPILE_PULL_LOOP_PID"
+	fi
+	echo "COORDINATEX_PID:                 $$"                               >> $TEMPORARY_DIRECTORY/information
+
+	echo "CoordinaTeX is running"
+	echo "Press ctrl-c or run \`coordinatex quit\` to quit"
+	while true; do sleep 5s; done
+	quit
+}
+
+quit(){
+	echo ""
+	if [ ! -f "$TEMPORARY_DIRECTORY/lock" ]; then
+		echo "Doesn't look like it's running, but I'll clean up anyways."
+	fi
+	if [ -f "$TEMPORARY_DIRECTORY/information" ]; then
+		load_information
+	fi
+	if  [ ! -z "$CURSOR_PULL_LOOP_PID" ]; then
+		echo -n "Killing cursor pull loop..."
+		if kill $CURSOR_PULL_LOOP_PID 2>/dev/null; then
+			echo "done."
+		else
+			echo "failed.  Something could be wrong..."
+		fi
+	fi
+	if  [ ! -z "$COMPILE_PULL_LOOP_PID" ]; then
+		echo -n "Killing cursor pull loop..."
+		if kill $COMPILE_PULL_LOOP_PID 2>/dev/null; then
+			echo "done."
+		else
+			echo "failed.  Something could be wrong..."
+		fi
+	fi
+	if [ -f "$TEMPORARY_DIRECTORY/error.tex" ]; then
+		rm $TEMPORARY_DIRECTORY/error.tex
+	fi
+	if [ -f "$TEMPORARY_DIRECTORY/compile_output" ]; then
+		rm $TEMPORARY_DIRECTORY/compile_output
+	fi
+	if [ -f "$TEMPORARY_DIRECTORY/information" ]; then
+		rm $TEMPORARY_DIRECTORY/information
+	fi
+	if [ -f "$TEMPORARY_DIRECTORY/lock" ]; then
+		rm $TEMPORARY_DIRECTORY/lock
+	fi
+	echo "CoordinaTeX closed."
+	exit 0
+}
+
+gather_information(){
+	ATTEMPT_FORWARD_SEARCH="YES"
+	ATTEMPT_REVERSE_SEARCH="YES"
+	# information not explitely given
+
+	# INPUT_FILE
+	if [ -z "$INPUT_FILE" ]; then
+		if [ $(ls | grep -c "\.tex$") -eq 1 ]; then
+			INPUT_FILE=$(ls | grep "\.tex$")
+		fi
+		if [ -z "$INPUT_FILE" ]; then
+			echo "ERROR: No TeX file specified, cannot guess, aborting."
+			exit 1
+		else
+			echo "WARNING: No input file specified, guessing $INPUT_FILE"
+		fi
+	fi
+
+	# OUTPUT_FILE
+	if [ -z "$OUTPUT_FILENAME" ]; then
+		if [ $(ls -1 | grep -c "\.pdf$") -eq 1 ] && [ $(ls -1 | grep -c "\.dvi$") -eq 0 ]; then
+			OUTPUT_FILE=$(ls -1 | grep "\.pdf$")
+		elif [ $(ls -1 | grep -c "\.pdf$") -eq 0 ] && [ $(ls -1 | grep -c "\.dvi$") -eq 1 ]; then
+			OUTPUT_FILE=$(ls -1 | grep "\.dvi$")
+		elif [ "$COMPILER" = "pdflatex" ] || [ "$COMPILER" = "pdftex" ]; then # need to check for context->pdf, too
+			OUTPUT_FILE=$(echo $INPUT_FILE | sed 's/\(.*\)[.]tex$/\1.pdf/')
+		elif [ "$COMPILER" = "latex" ] || [ "$COMPILER" = "tex" ]; then # need to check for context->dvi, too
+			OUTPUT_FILE=$(echo $INPUT_FILE | sed 's/\(.*\)[.]tex$/\1.dvi/')
+		fi
+		if [ -z "$OUTPUT_FILE" ]; then
+			echo "ERROR: No output filename specified, cannot guess, aborting."
+			exit 1
+		else
+			echo "WARNING: No output filename specified, guessing $OUTPUT_FILE"
+		fi
+	fi
+
+	# EDITOR
+	if [ -z "$EDITOR" ]; then
+		for POSSIBLE_EDITOR in $SUPPORTED_EDITORS; do
+			if [ -z "$EDITOR" ] && ps cx | grep $POSSIBLE_EDITOR >/dev/null; then
+				EDITOR=$POSSIBLE_EDITOR
+			fi
+		done
+		if [ -z "$EDITOR" ]; then
+			echo "ERROR: No editor specified, cannot guess, aborting."
+			exit 1
+		else
+			echo "WARNING: No editor specified, guessing $EDITOR"
+		fi
+	fi
+
+	# EDITOR_SERVER
+	if [ -z "$EDITOR_SERVER" ] && [ "$EDITOR" = "vim" ]; then
+		if [ $(vim --serverlist | wc -l) -eq 1 ]; then
+			EDITOR_SERVER=$(vim --serverlist)
+			echo "WARNING: Found exactly one vim server, assuming you want to use it"
+		elif [ "$CURSOR_PUSHPULL" = "PULL" ]; then
+			echo "ERROR: Cannot guess vim server, needed for cursor position pull, aborting."
+			exit 1
+		fi
+	fi
+
+	# CURSOR_PUSHPULL
+	if [ -z "$CURSOR_PUSHPULL" ]; then
+		if [ "$EDITOR" = "vim" ] && [ ! -z "$EDITOR_SERVER" ]; then
+			CURSOR_PUSHPULL="PULL"
+			echo "WARNING: Assuming you want to pull cursor position from vim (recommended)."
+		else
+			# coordinatex can't pull from editor, so assume push
+			CURSOR_PUSHPULL="PUSH"
+			echo "WARNING: No cursor push/pull specified, defaulting to $CURSOR_PUSHPULL"
+		fi
+	fi
+
+	# CURSOR_PULL_CMD
+	if [ -z "$CURSOR_PULL_CMD" ]; then
+		if [ "$EDITOR" = "vim" ] && [ -z "$EDITOR_SERVER" ] && [ "$CURSOR_PUSHPULL" = "PULL" ]; then
+			CURSOR_PULL_CMD='vim --servername "$EDITOR_SERVER" --remote-expr '\''line(".").":".col(".")'\'
+		fi
+	fi
+
+	# CURSOR_PULL_DELAY
+	if [ -z "$CURSOR_PULL_DELAY" ]; then
+		if which inotifywait >/dev/null; then
+			COMPILE_PERIOD="inotify"
+		else
+			COMPILE_PERIOD="1"
+		fi
+		echo "WARNING: No delay between file change specified, defaulting to: $COMPILE_PERIOD"
+	fi
+
+	# REVERSE_SEARCH_EDITOR_JUMP_CMD
+	if [ -z "$REVERSE_SEARCH_EDITOR_JUMP_CMD" ]; then
+		if [ "$EDITOR" = "vim" ] && [ ! -z "$EDITOR_SERVER" ]; then
+			REVERSE_SEARCH_EDITOR_JUMP_CMD="vim --servername \"$EDITOR_SERVER\" --remote +$LINE $INPUT_FILE"
+		fi # need to add support for emacs at the very least, look into emacsclient
+		if [ -z "$REVERSE_SEARCH_EDITOR_JUMP_CMD" ]; then
+			echo "WARNING: No backward-search-editor-jump-command specified, cannot guess, reverse-search disabled"
+			ATTEMPT_REVERSE_SEARCH="NO"
+		fi
+	fi
+
+	# READER
+	if [ -z "$READER" ]; then
+		for POSSIBLE_READER in $SUPPORTED_READERS; do
+			if [ -z "$READER" ] && ps cx | grep $POSSIBLE_READER >/dev/null; then
+				READER=$POSSIBLE_READER
+			fi
+		done
+		if [ -z "$READER" ]; then
+			for POSSIBLE_READER in $SUPPORTED_READERS; do
+				if [ -z "$READER" ] && which $POSSIBLE_READER >/dev/null; then
+					READER=$POSSIBLE_READER
+				fi
+			done
+			if echo $OUTPUT_FILE | grep "\.dvi$" >/dev/null && which xdvi >/dev/null ; then
+				READER="xdvi"
+			fi
+		fi
+		if [ -z "$READER" ]; then
+			echo "ERROR: No reader specified, cannot guess, aborting."
+			exit 1
+		else
+			echo "WARNING: No reader specified, guessing $READER"
+		fi
+	fi
+	if ps cx | grep $READER >/dev/null; then
+		LAUNCH_READER="NO"
+	else
+		LAUNCH_READER="YES"
+		echo "WARNING: Do not see $READER running, will launch"
+	fi
+
+	# Warn about reader not supporting reverse-searching
+	if [ "$READER" != "xdvi" ]; then # don't forget to check for other reverse-supporting readers when adding them
+		echo "WARNING: $READER does not support reverse searching, reverse searching will be disabled"
+	fi
+
+	# READER_SERVER
+	if [ -z "$READER_SERVER" ] && [ "$READER" = "xpdf" ]; then
+		if [ $(ps ux | awk '$11=="xpdf" && $12=="-remote" {print $13}' | wc -l) -eq 1 ]; then
+			READER_SERVER=$(ps ux | awk '$11=="xpdf" && $12=="-remote" {print $13}')
+			echo "WARNING: No xpdf server specified, guessing: $READER_SERVER"
+		else
+			READER_SERVER="coordinatex"
+			LAUNCH_READER=1
+			echo "WARNING: No xpdf server given, defaulting to: $READER_SERVER"
+			echo "See xpdf's man page, section \"REMOTE SERVER MODE\""
+		fi
+	fi
+
+	# READER_RELOAD_CMD
+	if [ -z "$READER_RELOAD_CMD" ]; then
+		if [ "$READER" = "xdvi" ]; then
+			READER_RELOAD_CMD='pkill -USR1 xdvi'
+		elif [ "$READER" = "xpdf" ]; then
+			READER_RELOAD_CMD='xpdf -remote $READER_SERVER -reload &'
+		elif [ "$READER" = "mupdf" ]; then
+			if which xdotool >/dev/null; then
+				READER_RELOAD_CMD='xdotool type --window $(xwininfo -root -children | awk '"'"'/mupdf/{print$1}'"'"') r'
+			else
+				READER_RELOAD_CMD=""
+				echo "WARNING: mupdf reload requires xdotool, mupdf reloading will be disabled."
+			fi
+		fi
+	fi
+
+	# COMPILE_PULL_DELAY
+	if [ -z "$COMPILE_PULL_DELAY" ]; then
+		if which inotifywait >/dev/null; then
+			COMPILE_PULL_DELAY="inotify"
+		else
+			COMPILE_PULL_DELAY="1"
+		fi
+		if [ -z "$COMPILE_PULL_DELAY" ]; then
+			echo "ERROR: No compile delay specified, cannot guess, aborting."
+			exit 1
+		else
+			echo "WARNING: No compile delay specified, guessing $COMPILE_PULL_DELAY"
+		fi
+	fi
+
+	# FORWARD_SEARCH_READER_JUMP_CMD
+	if [ -z "$FORWARD_SEARCH_READER_JUMP_CMD" ]; then
+		if [ "$READER" = "xdvi" ]; then
+			FORWARD_SEARCH_READER_JUMP_CMD='xdvi'
+			if [ ! -z "$REVERSE_SEARCH_EDITOR_JUMP_CMD" ]; then
+				FORWARD_SEARCH_READER_JUMP_CMD="$FORWARD_SEARCH_READER_JUMP_CMD "' -editor "$REVERSE_SEARCH_EDITOR_JUMP_CMD"'
+			fi
+			FORWARD_SEARCH_READER_JUMP_CMD="$FORWARD_SEARCH_READER_JUMP_CMD"' -sourceposition "$CURSOR_POSITION $INPUT_FILE"'" $OUTPUT_FILE"
+			if [ "$SYNC_METHOD" = "synctex" ]; then
+				ATTEMPT_FORWARD_SEARCH="NO"
+				ATTEMPT_REVERSE_SEARCH="NO"
+				READER_FORWARD_SEARCH_CMD=""
+				echo "WARNING: xdvi forward and reverse searches require srcltx, forward and reverse searching will be disabled."
+			fi
+		elif [ "$READER" = "xpdf" ]; then
+			if [ ! -z "$READER_SERVER" ]; then
+				FORWARD_SEARCH_READER_JUMP_CMD='xpdf -remote $READER_SERVER $OUTPUT_FILE $(synctex view -i $CURSOR_POSITION:$INPUT_FILE -o $OUTPUT_FILE | awk -F: '"'"'/^Page:[0-9]/{print$2;exit}'"') &"
+			else
+				ATTEMPT_FORWARD_SEARCH="NO"
+				FORWARD_SEARCH_READER_JUMP_CMD=""
+				echo "WARNING: xpdf forward searches require xpdf server, forward searching will be disabled."
+			fi
+		elif [ "$READER" = "mupdf" ]; then
+			if which xdotool >/dev/null; then
+				FORWARD_SEARCH_READER_JUMP_CMD='xdotool type --window $(xwininfo -root -children | awk '"'"'/mupdf/{print$1}'"'"') $(synctex view -i $CURSOR_POSITION:$INPUT_FILE -o $OUTPUT_FILE | awk -F: '"'"'/^Page:[0-9]/{print$2;exit}'"')g"
+			else
+				ATTEMPT_FORWARD_SEARCH="NO"
+				FORWARD_SEARCH_READER_JUMP_CMD=""
+				echo "WARNING: xpdf forward searches require xpdf server, forward searching will be disabled."
+			fi
+		fi
+	fi
+
+	# COMPILE_PUSHPULL
+	if [ -z "$COMPILE_PUSHPULL" ]; then
+		COMPILE_PUSHPULL="PULL"
+		echo "WARNING: Defaulting to compiling when $INPUT_FILE changes on disk."
+	fi
+
+	# COMPILER
+	if [ -z "$COMPILER" ]; then
+		if $(echo $OUTPUT_FILE | grep "\.pdf$" >/dev/null); then
+			COMPILER=pdflatex # latex is most popular, assume latex over plain/context
+		elif $(echo $OUTPUT_FILE | grep "\.dvi$" >/dev/null); then
+			COMPILER=latex # latex is most popular, assume latex over plain/context
+		fi
+		if [ -z "$COMPILER" ]; then
+			echo "ERROR: No compile method specified, cannot guess, aborting."
+			exit 1
+		else
+			echo "WARNING: No compile method specified, guessing $COMPILER"
+		fi
+	fi
+
+	# SYNC_METHOD
+	if [ -z "$SYNC_METHOD" ]; then
+		SYNC_METHOD=$(awk '/^[^%]*\\usepackage{srcltx}/{SRCLTXLINE=NR}/^[^%]*\\begin{document}/{BEGINDOCLINE=NR}END{if(SRCLTXLINE!="" && SRCLTXLINE<BEGINDOCLINE){print "srcltx"}else{print "synctex"}}' $INPUT_FILE)
+		echo "WARNING: No sync method specified, guessing: $SYNC_METHOD"
+	fi
+
+	# COMPILE_CMD
+	if [ -z "$COMPILE_CMD" ]; then
+		if [ "$COMPILER" = "latex" ] && [ "$SYNC_METHOD" = "srcltx" ]; then
+			COMPILE_CMD='latex -interaction=nonstopmode "$INPUT_FILE"'
+			COMPILE_ERROR_SHOW_CMD='latex -jobname='$(echo $INPUT_FILE | sed 's/[.]tex$//g')' -interaction=nonstopmode $TEMPORARY_DIRECTORY/error.tex'
+		elif [ "$COMPILER" = "pdflatex" ] && [ "$SYNC_METHOD" = "srcltx" ]; then
+			COMPILE_CMD='pdflatex -interaction=nonstopmode "$INPUT_FILE"'
+			COMPILE_ERROR_SHOW_CMD='pdflatex -jobname='$(echo $INPUT_FILE | sed 's/[.]tex$//g')' -interaction=nonstopmode $TEMPORARY_DIRECTORY/error.tex'
+		elif [ "$COMPILER" = "latex" ] && [ "$SYNC_METHOD" = "synctex" ]; then
+			COMPILE_CMD='latex -interaction=nonstopmode -synctex=1 "$INPUT_FILE"'
+			COMPILE_ERROR_SHOW_CMD='latex -jobname='$(echo $INPUT_FILE | sed 's/[.]tex$//g')' -interaction=nonstopmode $TEMPORARY_DIRECTORY/error.tex'
+		elif [ "$COMPILER" = "pdflatex" ] && [ "$SYNC_METHOD" = "synctex" ]; then
+			COMPILE_CMD='pdflatex -interaction=nonstopmode -synctex=1 "$INPUT_FILE"'
+			COMPILE_ERROR_SHOW_CMD='pdflatex -jobname='$(echo $INPUT_FILE | sed 's/[.]tex$//g')' -interaction=nonstopmode $TEMPORARY_DIRECTORY/error.tex'
+		fi
+		if [ -z "$COMPILE_CMD" ]; then
+			echo "ERROR: No compile command specified, cannot guess, aborting."
+			exit 1
+		fi
+	fi
+
+	# COMPILE_PULL_DELAY
+	if [ -z "$COMPILE_PULL_DELAY" ] && [ "$COMPILE_PUSHPULL" = "PULL"]; then
+		COMPILE_PULL_DELAY=1
+		echo "WARNING: No delay between compilation checks specified, defaulting to: $COMPILE_PULL_DELAY"
+	fi
+}
+
+load_information(){
+	INPUT_FILE=$(awk                      '/^INPUT_FILE:/{print substr($0,34,length($0)-33)}                      ' $TEMPORARY_DIRECTORY/information)
+	INPUT_FILE=$(awk                      '/^INPUT_FILE:/{print substr($0,34,length($0)-33)}                      ' $TEMPORARY_DIRECTORY/information)
+	OUTPUT_FILE=$(awk                     '/^OUTPUT_FILE:/{print substr($0,34,length($0)-33)}                     ' $TEMPORARY_DIRECTORY/information)
+	EDITOR=$(awk                          '/^EDITOR:/{print substr($0,34,length($0)-33)}                          ' $TEMPORARY_DIRECTORY/information)
+	EDITOR_SERVER=$(awk                   '/^EDITOR_SERVER:/{print substr($0,34,length($0)-33)}                   ' $TEMPORARY_DIRECTORY/information)
+	CURSOR_PUSHPULL=$(awk                 '/^CURSOR_PUSHPULL:/{print substr($0,34,length($0)-33)}                 ' $TEMPORARY_DIRECTORY/information)
+	CURSOR_PULL_CMD=$(awk                 '/^CURSOR_PULL_CMD:/{print substr($0,34,length($0)-33)}                 ' $TEMPORARY_DIRECTORY/information)
+	CURSOR_PULL_DELAY=$(awk               '/^CURSOR_PULL_DELAY:/{print substr($0,34,length($0)-33)}               ' $TEMPORARY_DIRECTORY/information)
+	REVERSE_SEARCH_EDITOR_JUMP_CMD=$(awk  '/^REVERSE_SEARCH_EDITOR_JUMP_CMD:/{print substr($0,34,length($0)-33)}  ' $TEMPORARY_DIRECTORY/information)
+	READER=$(awk                          '/^READER:/{print substr($0,34,length($0)-33)}                          ' $TEMPORARY_DIRECTORY/information)
+	READER_SERVER=$(awk                   '/^READER_SERVER:/{print substr($0,34,length($0)-33)}                   ' $TEMPORARY_DIRECTORY/information)
+	READER_RELOAD_CMD=$(awk               '/^READER_RELOAD_CMD:/{print substr($0,34,length($0)-33)}               ' $TEMPORARY_DIRECTORY/information)
+	FORWARD_SEARCH_READER_JUMP_CMD=$(awk  '/^FORWARD_SEARCH_READER_JUMP_CMD:/{print substr($0,34,length($0)-33)}  ' $TEMPORARY_DIRECTORY/information)
+	COMPILE_PUSHPULL=$(awk                '/^COMPILE_PUSHPULL:/{print substr($0,34,length($0)-33)}                ' $TEMPORARY_DIRECTORY/information)
+	COMPILER=$(awk                        '/^COMPILER:/{print substr($0,34,length($0)-33)}                        ' $TEMPORARY_DIRECTORY/information)
+	SYNC_METHOD=$(awk                     '/^SYNC_METHOD:/{print substr($0,34,length($0)-33)}                     ' $TEMPORARY_DIRECTORY/information)
+	COMPILE_CMD=$(awk                     '/^COMPILE_CMD:/{print substr($0,34,length($0)-33)}                     ' $TEMPORARY_DIRECTORY/information)
+	COMPILE_ERROR_SHOW_CMD=$(awk          '/^COMPILE_ERROR_SHOW_CMD:/{print substr($0,34,length($0)-33)}          ' $TEMPORARY_DIRECTORY/information)
+	COMPILE_PULL_DELAY=$(awk              '/^COMPILE_PULL_DELAY:/{print substr($0,34,length($0)-33)}              ' $TEMPORARY_DIRECTORY/information)
+	ATTEMPT_FORWARD_SEARCH=$(awk          '/^ATTEMPT_FORWARD_SEARCH:/{print substr($0,34,length($0)-33)}          ' $TEMPORARY_DIRECTORY/information)
+	ATTEMPT_REVERSE_SEARCH=$(awk          '/^ATTEMPT_REVERSE_SEARCH:/{print substr($0,34,length($0)-33)}          ' $TEMPORARY_DIRECTORY/information)
+	LAUNCH_READER=$(awk                   '/^LAUNCH_READER:/{print substr($0,34,length($0)-33)}                   ' $TEMPORARY_DIRECTORY/information)
+	READER_SHOW_ERROR=$(awk               '/^READER_SHOW_ERROR:/{print substr($0,34,length($0)-33)}               ' $TEMPORARY_DIRECTORY/information)
+	CURSOR_PULL_LOOP_PID=$(awk            '/^CURSOR_PULL_LOOP_PID:/{print substr($0,34,length($0)-33)}            ' $TEMPORARY_DIRECTORY/information)
+	COMPILE_PULL_LOOP_PID=$(awk           '/^COMPILE_PULL_LOOP_PID:/{print substr($0,34,length($0)-33)}           ' $TEMPORARY_DIRECTORY/information)
+	COORDINATEX_PID=$(awk                 '/^COORDINATEX_PID:/{print substr($0,34,length($0)-33)}                 ' $TEMPORARY_DIRECTORY/information)
+}
+
+compile_pull_loop() {
+	OLD_MD5=""
+	while true; do
+		# check to see if the file changed
+		MD5=$(md5sum "$INPUT_FILE" >/dev/null)
+		if [ "$MD5" != "$OLD_MD5" ]; then
+			if eval $COMPILE_CMD > $TEMPORARY_DIRECTORY/compile_output; then
+				eval $RELOAD_READER_CMD >/dev/null
+				if [ -f $TEMPORARY_DIRECTORY/error.tex ]; then
+					rm $TEMPORARY_DIRECTORY/error.tex >/dev/null
+				fi
+			else
+				if [ "$READER_DONT_SHOW_ERROR" = "YES" ]; then
+					echo '\documentclass{article}\usepackage{fullpage}' > $TEMPORARY_DIRECTORY/error.tex
+					if [ "$SYNC_METHOD" = "srcltx" ]; then
+						echo '\usepackage{srcltx}' >> $TEMPORARY_DIRECTORY/error.tex
+					fi
+					echo '\\begin{document}\large\\noindent' >> $TEMPORARY_DIRECTORY/error.tex
+					sed -e 's,\\,\\textbackslash{},g' -e 's,$,\\\\,g' -e 's,\$,\\\$,g' -e 's,\(\[\|\]\|<\|>\),\$&\$,g' compile_output >> $TEMPORARY_DIRECTORY/error.tex
+					echo '\n\end{document}' >> $TEMPORARY_DIRECTORY/error.tex
+					if eval $SHOW_COMPILE_ERROR_CMD >/dev/null; then
+						eval $RELOAD_READER_CMD
+					else
+						echo "ERROR: Error creating error for reader to show"
+					fi
+				fi
+			fi
+		fi
+		if [ "$COMPILE_PERIOD" = "inotify" ]; then
+			inotifywait "$INPUT_FILE" 1>/dev/null 2>/dev/null
+		else
+			sleep $COMPILE_PERIOD
+		fi
+	done
+}
+
+
+READER_SHOW_ERROR="YES"
+
+if [ "$1" = "new" ]; then
+	gather_information
+	new_session
+fi
+
+if [ "$1" = "load" ]; then
+	load_information
+fi
+
+if [ "$1" = "quit" ] || [ "$1" = "kill" ] || [ "$1" = "exit" ]; then
+	quit
+fi
 
