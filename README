@@ -10,7 +10,7 @@ editor and dvi/pdf reader in the creation of TeX documents.  Specifically:
 
 1) It will automatically compile the TeX document when it changes, and if the
 compilation is successful it will tell the reader to refresh the document.
-If your editor is set to update sufficiently often, the effect should be to
+If your editor is set to read sufficiently often, the effect should be to
 get a somewhat live update of the TeX document as it is being created.
 
 2) It will attempt to automate srctex/synctex's forward searching, where it
@@ -19,9 +19,9 @@ pdf/dvi corresponding to a position in the source.  For example, if the
 editor's cursor moves from the end of the document to the beginning, the
 dvi/pdf reader will jump to the first page.
 
-3) Where possible, it will attempt to support reverse-searches as well; that
+3) Where possible, it will attempt to support inverse-searches as well; that
 is, the reader can tell the editor to jump to a position.  If you tell the
-reader you want to reverse-search to the line that created the title
+reader you want to inverse-search to the line that created the title
 information, the editor will jump to \maketitle.
 
 4) Should a compilation error arise, CoordinaTeX will update the contents of
