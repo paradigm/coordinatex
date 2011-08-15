@@ -406,7 +406,7 @@ gather_information(){
 	# READER_LAUNCH_CMD
 	if [ -z "$READER_LAUNCH_CMD" ]; then
 		if [ "$READER" = "xdvi" ]; then
-			READER_LAUNCH_CMD='xdvi'
+			READER_LAUNCH_CMD='xdvi -expertmode 0'
 			if [ ! -z "$INVERSE_SEARCH_EDITOR_JUMP_CMD" ]; then
 				READER_LAUNCH_CMD="$READER_LAUNCH_CMD -editor \"$INVERSE_SEARCH_EDITOR_JUMP_CMD\""
 			fi
