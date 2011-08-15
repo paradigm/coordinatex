@@ -184,7 +184,7 @@ quit(){
 		fi
 	fi
 	if [ "$(ls -A $TEMPORARY_DIRECTORY)" ]; then
-		rm $TEMPORARY_DIRECTORY/*
+		rm -r $TEMPORARY_DIRECTORY
 	fi
 	echo "CoordinaTeX closed."
 	exit 0
@@ -294,8 +294,6 @@ gather_information(){
 			ATTEMPT_INVERSE_SEARCH="NO"
 		fi
 	fi
-	# paradigm
-	#INVERSE_SEARCH_EDITOR_JUMP_CMD="xterm"
 
 	# READER
 	if [ -z "$READER" ]; then
