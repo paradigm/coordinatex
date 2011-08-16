@@ -156,7 +156,14 @@ new_session(){
 
 	echo "CoordinaTeX is running"
 	echo "Press ctrl-c to quit"
-	while true; do sleep 5s; done
+	while true; do
+		sleep 5s
+		if [ ! -d $TEMPORARY_DIRECTORY/information ]; then
+			echo "Looks like coordinatex was forced closed."
+			echo "Killing main loop..."
+			kill $$
+		fi
+	done
 	quit
 }
 
@@ -176,14 +183,14 @@ quit(){
 		fi
 	fi
 	if  [ ! -z "$COMPILE_PULL_LOOP_PID" ]; then
-		echo -n "Killing cursor pull loop..."
+		echo -n "Killing compile pull loop..."
 		if kill $COMPILE_PULL_LOOP_PID 2>/dev/null; then
 			echo "done."
 		else
 			echo "failed.  Something could be wrong..."
 		fi
 	fi
-	if [ "$(ls -A $TEMPORARY_DIRECTORY)" ]; then
+	if [ -d $TEMPORARY_DIRECTORY ]; then
 		rm -r $TEMPORARY_DIRECTORY
 	fi
 	echo "CoordinaTeX closed."
@@ -551,6 +558,11 @@ compile_pull_loop() {
 		else
 			sleep $COMPILE_PULL_DELAY
 		fi
+		if [ ! -f $TEMPORARY_DIRECTORY/lock ]; then
+			echo "Looks like coordinatex was forced closed."
+			echo "Killing compile pull loop..."
+			kill $$
+		fi
 	done
 }
 
@@ -566,6 +578,11 @@ cursor_pull_loop(){
 			fi
 		fi
 		sleep $CURSOR_PULL_DELAY
+		if [ ! -f $TEMPORARY_DIRECTORY/lock ]; then
+			echo "Looks like coordinatex was forced closed."
+			echo "Killing cursor pull loop..."
+			kill $$
+		fi
 	done
 }
 
