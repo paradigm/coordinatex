@@ -158,7 +158,7 @@ new_session(){
 	echo "Press ctrl-c to quit"
 	while true; do
 		sleep 5s
-		if [ ! -d $TEMPORARY_DIRECTORY/information ]; then
+		if [ ! -f $TEMPORARY_DIRECTORY/information ]; then
 			echo "Looks like coordinatex was forced closed."
 			echo "Killing main loop..."
 			kill $$
