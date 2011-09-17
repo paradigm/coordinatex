@@ -543,7 +543,7 @@ compile_pull_loop() {
 						echo '\usepackage{srcltx}' >> $TEMPORARY_DIRECTORY/error.tex
 					fi
 					echo '\\begin{document}\large\\noindent' >> $TEMPORARY_DIRECTORY/error.tex
-					sed -e 's,\\,\\textbackslash{},g' -e 's,$,\\\\,g' -e 's,\({\|}\|\$\),\\&,g' -e 's,\\textbackslash\\{\\},\\textbackslash{},g' -e 's,\(\[\|\]\|<\|>\),\$&\$,g' $TEMPORARY_DIRECTORY/compile_output >> $TEMPORARY_DIRECTORY/error.tex
+					sed -e 's,\\,\\textbackslash{},g' -e 's,$,\\\\,g' -e 's,\({\|}\|\$\|#\|_\),\\&,g' -e 's,\\textbackslash\\{\\},\\textbackslash{},g' -e 's,\(\[\|\]\|<\|>\),\$&\$,g' $TEMPORARY_DIRECTORY/compile_output >> $TEMPORARY_DIRECTORY/error.tex
 					echo '\n\end{document}' >> $TEMPORARY_DIRECTORY/error.tex
 					if eval $COMPILE_ERROR_SHOW_CMD >/dev/null; then
 						eval $READER_RELOAD_CMD
